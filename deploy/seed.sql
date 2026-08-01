@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict EqLdOfm5iyOsCDPKT0Ytmga7ipoKciOpu9gp3k4G6nAUqzjVICJ9dO5byVlHwoX
+\restrict vDMXUpsO76VQwGCbM9c3YX9L6ja2ycr4zxIzQBrYspCpnrd9XRHQhiL6AmxMWqc
 
 -- Dumped from database version 18.4
 -- Dumped by pg_dump version 18.4
@@ -4754,17 +4754,17 @@ COPY public.product (tenant_id, id, name, price_cents, cost_cents, description, 
 --
 
 COPY public.product_question (tenant_id, id, product_id, type, label, options, sort_order, required) FROM stdin;
-1	1	3	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	f
-1	2	4	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	f
-1	3	5	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	f
-1	4	6	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	f
-1	5	7	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	f
-1	6	8	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	f
-1	7	9	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	f
-1	8	10	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	f
-1	9	11	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	f
-1	10	12	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	f
-1	11	13	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	f
+1	1	3	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	t
+1	2	4	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	t
+1	3	5	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	t
+1	4	6	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	t
+1	5	7	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	t
+1	6	8	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	t
+1	7	9	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	t
+1	8	10	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	t
+1	9	11	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	t
+1	10	12	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	t
+1	11	13	choice	Nivel de picante	["Cool — sin picante", "Spark — suave", "Bonfire — medio", "Blaze — intenso", "Inferno — extremo"]	0	t
 \.
 
 
@@ -5060,9 +5060,8 @@ COPY public.table_group (tenant_id, id, created_at) FROM stdin;
 --
 
 COPY public.tax (id, tenant_id, name, rate_percent, valid_from, valid_to, created_at) FROM stdin;
-1	1	IVA 10% (alimentos y bebidas)	10	2026-08-01	\N	2026-08-01 19:49:35.106796
-2	1	IVA 21% (servicios)	21	2026-08-01	\N	2026-08-01 19:49:35.106936
 3	1	IVA 0% (exento)	0	2026-08-01	\N	2026-08-01 19:49:35.106963
+1	1	IVA 15%	15	2026-08-01	\N	2026-08-01 19:49:35.106796
 \.
 
 
@@ -5517,7 +5516,7 @@ SELECT pg_catalog.setval('public.table_id_seq', 3, true);
 -- Name: tax_id_seq; Type: SEQUENCE SET; Schema: public; Owner: pos
 --
 
-SELECT pg_catalog.setval('public.tax_id_seq', 3, true);
+SELECT pg_catalog.setval('public.tax_id_seq', 4, true);
 
 
 --
@@ -9493,5 +9492,5 @@ ALTER TABLE ONLY public.work_session
 -- PostgreSQL database dump complete
 --
 
-\unrestrict EqLdOfm5iyOsCDPKT0Ytmga7ipoKciOpu9gp3k4G6nAUqzjVICJ9dO5byVlHwoX
+\unrestrict vDMXUpsO76VQwGCbM9c3YX9L6ja2ycr4zxIzQBrYspCpnrd9XRHQhiL6AmxMWqc
 
