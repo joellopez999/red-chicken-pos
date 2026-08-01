@@ -87,6 +87,8 @@ export class MenuComponent implements OnInit, OnDestroy {
   orderHistory = signal<OrderHistoryItem[]>([]);
   expandedHistoryId = signal<number | null>(null);
   showSuccessToast = signal(false);
+  addedToast = signal<string | null>(null);
+  private addedToastTimer: ReturnType<typeof setTimeout> | null = null;
   lastOrderId = signal(0);
   ordersExpanded = signal(true);
   menuExpanded = signal(true);
@@ -769,6 +771,9 @@ export class MenuComponent implements OnInit, OnDestroy {
       return [...items, newLine];
     });
     this.flashProductAdded(product, lineKey);
+    this.addedToast.set(`${product.name} agregado`);
+    if (this.addedToastTimer) clearTimeout(this.addedToastTimer);
+    this.addedToastTimer = setTimeout(() => this.addedToast.set(null), 2000);
     // Auto-expand cart when adding first item
     if (this.cart().length === 1) {
       this.cartExpanded.set(true);

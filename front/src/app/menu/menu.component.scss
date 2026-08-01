@@ -1,6 +1,34 @@
 // Menu Component Styles - Mobile First
 @use '../../styles/breakpoints' as *;
 
+// Floating "item added" confirmation toast
+.added-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 88px;
+  transform: translateX(-50%);
+  z-index: 4000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: #16a34a;
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border-radius: 999px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+  animation: added-toast-in 0.18s ease-out;
+
+  svg { flex-shrink: 0; }
+}
+
+@keyframes added-toast-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
 // ============================================
 // VARIABLES & DESIGN TOKENS
 // ============================================
