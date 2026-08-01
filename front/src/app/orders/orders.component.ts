@@ -405,6 +405,14 @@ ModuleRegistry.registerModules([
                               @if (order.status === 'paid' && canMarkPaid()) {
                                 <div class="dropdown-section">
                                   <button
+                                    class="dropdown-item forward"
+                                    (click)="completeOrder(order)">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                      <polyline points="20,6 9,17 4,12"/>
+                                    </svg>
+                                    Completar pedido
+                                  </button>
+                                  <button
                                     class="dropdown-item backward"
                                     (click)="unmarkPaid(order)">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -723,6 +731,14 @@ ModuleRegistry.registerModules([
                                 }
                                 @if (order.status === 'paid' && canMarkPaid()) {
                                   <div class="dropdown-section">
+                                    <button
+                                      class="dropdown-item forward"
+                                      (click)="completeOrder(order)">
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="20,6 9,17 4,12"/>
+                                      </svg>
+                                      Completar pedido
+                                    </button>
                                     <button
                                       class="dropdown-item backward"
                                       (click)="unmarkPaid(order)">
@@ -4311,6 +4327,17 @@ export class OrdersComponent implements OnInit, OnDestroy {
               payment_method: null
             };
           })
+        );
+      }
+    });
+  }
+
+  completeOrder(order: Order) {
+    this.statusDropdownOpen.set(null);
+    this.api.updateOrderStatus(order.id, 'completed').subscribe({
+      next: () => {
+        this.orders.update(list =>
+          list.map(o => o.id === order.id ? { ...o, status: 'completed' } : o)
         );
       }
     });
