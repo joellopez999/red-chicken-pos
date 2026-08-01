@@ -1,0 +1,15 @@
+{"items":[
+  {"name":"Tenders 3 pzas (Single)","price":4.50,"category":"Chicken Tenders","description":"100% pechuga de pollo, ultra crujientes con salsa Comeback"},
+  {"name":"Tenders 3 pzas (Combo)","price":6.50,"category":"Chicken Tenders","description":"3 piezas + acompanamiento"},
+  {"name":"Tenders 5 pzas (Single)","price":6.50,"category":"Chicken Tenders","description":"100% pechuga de pollo, ultra crujientes con salsa Comeback"},
+  {"name":"Tenders 5 pzas (Combo)","price":8.50,"category":"Chicken Tenders","description":"5 piezas + acompanamiento"},
+  {"name":"Red Chicken Sandwich (Single)","price":5.90,"category":"Chicken Sandwiches","description":"Pollo crispy, pepinillos, salsa Comeback, cheddar en pan brioche"},
+  {"name":"Red Chicken Sandwich (Combo)","price":7.90,"category":"Chicken Sandwiches","description":"Sandwich + acompanamiento"},
+  {"name":"Fire Chicken Sandwich (Single)","price":6.90,"category":"Chicken Sandwiches","description":"Pollo crispy, jalapenos rojos, doble cheddar, bacon, salsa Comeback, pan Pretzel"},
+  {"name":"Fire Chicken Sandwich (Combo)","price":8.90,"category":"Chicken Sandwiches","description":"Sandwich + acompanamiento"},
+  {"name":"Red Bucket Cheese Bacon","price":6.50,"category":"Red Buckets","description":"Papas cargadas con cheddar derretido y tocino crispy"},
+  {"name":"Red Bucket Chicken","price":7.00,"category":"Red Buckets","description":"Papas con trozos de pollo crispy y salsa Comeback"},
+  {"name":"Super Red Bucket Chicken","price":8.50,"category":"Red Buckets","description":"Papas con pollo crispy, tocino crispy y cheddar derretido"},
+  {"name":"Side de papas fritas","price":1.50,"category":"Extras"},
+  {"name":"Soda","price":1.00,"category":"Extras"}
+]}
