@@ -858,6 +858,7 @@ export class KitchenDisplayComponent implements OnInit, AfterViewInit, OnDestroy
     }
 
     document.addEventListener('click', this.closeItemStatusDropdown);
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
 
     document.addEventListener('fullscreenchange', this.onFullscreenChange);
     document.addEventListener('webkitfullscreenchange', this.onFullscreenChange);
@@ -882,6 +883,7 @@ export class KitchenDisplayComponent implements OnInit, AfterViewInit, OnDestroy
     this.routeDataSub?.unsubscribe();
     this.queryParamSub?.unsubscribe();
     document.removeEventListener('click', this.closeItemStatusDropdown);
+    document.removeEventListener('visibilitychange', this.onVisibilityChange);
     document.removeEventListener('fullscreenchange', this.onFullscreenChange);
     document.removeEventListener('webkitfullscreenchange', this.onFullscreenChange);
     document.removeEventListener('mozfullscreenchange', this.onFullscreenChange);
@@ -1001,6 +1003,15 @@ export class KitchenDisplayComponent implements OnInit, AfterViewInit, OnDestroy
 
   private onFullscreenChange = (): void => {
     this.syncFullscreenState();
+  };
+
+  private onVisibilityChange = (): void => {
+    // Al volver a la pestaña, el navegador pudo haber congelado el refresco en
+    // segundo plano (pestañas descartadas por ahorro de memoria). Recargamos al
+    // instante para que no queden pedidos viejos o ya borrados en pantalla.
+    if (document.visibilityState === 'visible') {
+      this.loadOrders({ background: true });
+    }
   };
 
   private syncFullscreenState(): void {
