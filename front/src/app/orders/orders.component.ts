@@ -2560,8 +2560,8 @@ export class OrdersComponent implements OnInit, OnDestroy {
   /** When set (via `?table=` query), order lists show only this table's orders. */
   tableScopeId = signal<number | null>(null);
   loading = signal(true);
-  currency = signal<string>('€');
-  currencyCode = signal<string | null>(null);
+  currency = signal<string>('$');
+  currencyCode = signal<string | null>('USD');
   showRemovedItems = false;
   viewMode = signal<'active' | 'not_paid' | 'history' | 'delivery'>('active');
 
@@ -3630,7 +3630,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
         if (code) {
           this.currency.set(currencySymbolFromIsoCode(this.translate, code));
         } else {
-          this.currency.set(settings.currency || '€');
+          this.currency.set(settings.currency || '$');
         }
       },
       error: (err) => {
