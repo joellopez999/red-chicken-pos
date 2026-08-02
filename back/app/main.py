@@ -14003,6 +14003,17 @@ def update_order_status(
                     session.add(item)
     
     session.add(order)
+
+    # Free the table when the order is closed (completed/cancelled) so the
+    # customer menu stops showing it as the "current order".
+    if status_update.status in (models.OrderStatus.completed, models.OrderStatus.cancelled) and order.table_id:
+        tbl = session.get(models.Table, order.table_id)
+        if tbl and tbl.active_order_id == order.id:
+            tbl.order_pin = None
+            tbl.is_active = False
+            tbl.active_order_id = None
+            session.add(tbl)
+
     session.commit()
 
     # Publish status update
