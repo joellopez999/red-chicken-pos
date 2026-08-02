@@ -335,6 +335,9 @@ ModuleRegistry.registerModules([
                             {{ 'ORDERS.FINISH_ORDER' | translate }}
                           </button>
                         }
+                        @if (order.status === 'paid' && canFinishOrder()) {
+                          <button type="button" class="btn btn-success" (click)="completeOrder(order)">Completar pedido</button>
+                        }
                         <div class="status-control">
                           <button
                             class="status-badge-btn"
@@ -662,6 +665,9 @@ ModuleRegistry.registerModules([
                               {{ 'ORDERS.FINISH_ORDER' | translate }}
                             </button>
                           }
+                          @if (order.status === 'paid' && canFinishOrder()) {
+                            <button type="button" class="btn btn-success" (click)="completeOrder(order)">Completar pedido</button>
+                          }
                           <div class="status-control">
                             <button
                               class="status-badge-btn"
@@ -873,6 +879,9 @@ ModuleRegistry.registerModules([
                           }
                           @if (order.status !== 'paid' && order.status !== 'cancelled' && canFinishOrder()) {
                             <button type="button" class="btn btn-success" (click)="openFinishPaymentModal(order)">{{ 'ORDERS.FINISH_ORDER' | translate }}</button>
+                          }
+                          @if (order.status === 'paid' && canFinishOrder()) {
+                            <button type="button" class="btn btn-success" (click)="completeOrder(order)">Completar pedido</button>
                           }
                         </div>
                       </div>
