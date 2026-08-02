@@ -4343,13 +4343,21 @@ export class OrdersComponent implements OnInit, OnDestroy {
 
   completeOrder(order: Order) {
     this.statusDropdownOpen.set(null);
-    this.api.updateOrderStatus(order.id, 'completed').subscribe({
-      next: () => {
-        this.orders.update(list =>
-          list.map(o => o.id === order.id ? { ...o, status: 'completed' } : o)
-        );
-      }
-    });
+    this.openConfirmModal(
+      '¿Completar y cerrar este pedido? Saldrá de Activos y pasará al Historial.',
+      () => {
+        this.api.updateOrderStatus(order.id, 'completed').subscribe({
+          next: () => {
+            this.orders.update(list =>
+              list.map(o => o.id === order.id ? { ...o, status: 'completed' } : o)
+            );
+            this.showToast('Pedido completado', 'success');
+          },
+          error: () => this.showToast('No se pudo completar el pedido', 'error')
+        });
+      },
+      { confirmText: 'Completar pedido' }
+    );
   }
 
   deleteOrder(order: Order) {
