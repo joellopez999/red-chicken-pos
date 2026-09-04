@@ -51,10 +51,11 @@ def order_fiscal_amount_cents(session: Session, order: models.Order) -> int:
         and i.status != models.OrderItemStatus.cancelled
     ]
     subtotal = sum(i.price_cents * i.quantity for i in active)
+    tax = sum(int(i.tax_amount_cents or 0) for i in active)
     tip = int(order.tip_amount_cents or 0)
     fee = int(getattr(order, "delivery_fee_cents", 0) or 0)
     discount = order_level_discount_cents(order)
-    return max(0, subtotal - discount + tip + fee)
+    return max(0, subtotal + tax - discount + tip + fee)
 
 
 def _canonical_hash_payload(

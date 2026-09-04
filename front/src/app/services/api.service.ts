@@ -609,6 +609,8 @@ export interface PublicTenantMenuProduct {
   name: string;
   price_cents: number;
   price_formatted: string;
+  /** IVA rate (%) added on top of price_cents at checkout; 0/absent = exempt */
+  tax_rate_percent?: number | null;
   list_price_cents?: number | null;
   list_price_formatted?: string | null;
   promo_label?: string | null;
@@ -967,6 +969,8 @@ export interface Product {
   category?: string; // Main category: "Starters", "Main Course", "Desserts", "Beverages", "Sides"
   subcategory?: string; // Subcategory: "Red Wine", "Appetizers", etc.
   tax_id?: number | null; // Override default tax for this product
+  /** Resolved IVA rate (%) added on top of price_cents at checkout; 0 = exempt (from GET /menu/{token}) */
+  tax_rate_percent?: number | null;
   available_from?: string | null; // YYYY-MM-DD; customer menu shows from this date
   available_until?: string | null; // YYYY-MM-DD; customer menu shows until this date
   // Legacy fields (for menu products from catalog)
@@ -1544,8 +1548,10 @@ export interface Order {
   created_at: string;
   items: OrderItem[];
   total_cents: number;
-  /** Sum of active line items (excludes tip); same as total_cents when no tip */
+  /** Sum of active line items (excludes tax and tip); same as total_cents when no tax/tip */
   subtotal_cents?: number;
+  /** IVA owed on top of subtotal_cents (prices are tax-exclusive) */
+  tax_cents?: number;
   loyalty_membership_id?: number | null;
   loyalty_discount_cents?: number;
   loyalty_units_redeemed?: number;
@@ -1628,6 +1634,7 @@ export interface PublicSatisfechoDeliveryOrderResponse {
   notes?: string | null;
   table_id: number | null;
   subtotal_cents?: number;
+  tax_cents?: number;
   delivery_fee_cents?: number;
   total_cents: number;
   public_order_token: string;
@@ -1793,7 +1800,7 @@ export interface TenantSettings {
   public_privacy_policy_url?: string | null;
   /** Up to 4 tip percentages for POS checkout; empty array disables tips; omit/null = default 5/10/15/20 */
   tip_preset_percents?: number[] | null;
-  /** VAT rate 0–100 on tip for invoice breakdown (tax-inclusive tip) */
+  /** VAT rate 0–100 on tip for invoice breakdown (tip itself treated as tax-inclusive for this split; independent of menu-price tax handling) */
   tip_tax_rate_percent?: number | null;
   /** POS checkout: preset % buttons vs card overpayment difference */
   tip_entry_mode?: 'preset' | 'overpayment' | string | null;

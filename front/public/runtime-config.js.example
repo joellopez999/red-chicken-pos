@@ -3,3 +3,10 @@
 // without secrets. Do not put a real measurement ID in the committed copy —
 // front/public/runtime-config.js is gitignored and overwritten on start.
 window.__GA_MEASUREMENT_ID__ = window.__GA_MEASUREMENT_ID__ || '';
+
+// LAN IP of the machine running the POS, written by the desktop launcher
+// (~/.local/bin/red-chicken-pos.sh) on each start. Lets the sidebar's
+// "open on mobile" QR resolve to a phone-reachable address even when the
+// page itself was loaded via "localhost" (stale tab, bookmark, typed by
+// hand). See sidebar.component.ts mobileAccessUrl.
+window.__LAN_IP__ = window.__LAN_IP__ || '';

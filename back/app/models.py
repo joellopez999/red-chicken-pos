@@ -14,7 +14,7 @@ from sqlmodel import Field, Relationship, SQLModel
 class Tax(SQLModel, table=True):
     """
     Per-tenant tax rates (e.g. IVA 10%, 21%, 0%) with validity period.
-    Prices are tax-inclusive; used for invoice breakdown and reporting.
+    Prices are tax-exclusive; IVA is added on top when charging the customer.
     """
     __tablename__ = "tax"
     id: int | None = Field(default=None, primary_key=True)
@@ -212,7 +212,7 @@ class Tenant(SQLModel, table=True):
 
     # POS checkout: up to 4 tip percentages (e.g. 5,10,15,20); empty list disables tips; null = legacy default in API
     tip_preset_percents: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
-    # VAT/IVA rate (0–100) applied to tip amount for invoice breakdown (tax-inclusive tip, same basis as menu prices)
+    # VAT/IVA rate (0–100) applied to tip amount for invoice breakdown (tip itself is treated as tax-inclusive for this split; independent of menu-price tax handling)
     tip_tax_rate_percent: int | None = Field(default=0)
     # POS: "preset" = tip from tip_preset_percents; "overpayment" = staff enters amount paid, tip = difference (see OrderMarkPaid)
     tip_entry_mode: str = Field(default="preset", max_length=32)
@@ -1279,7 +1279,7 @@ class OrderItem(SQLModel, table=True):
     product_id: int = Field(foreign_key="product.id")
     product_name: str  # Snapshot of product name at order time
     quantity: int
-    price_cents: int  # Snapshot of price at order time (tax-inclusive; after promo)
+    price_cents: int  # Snapshot of net (tax-exclusive) price at order time, after promo; see tax_amount_cents
     cost_cents: int | None = None  # Snapshot of cost at order time for profit
     notes: str | None = None  # Item-specific notes (e.g., "no onions")
     # Structured answers to product questions: {"question_id": value} (value: str for choice/text, int for scale, list[str] for multi choice)

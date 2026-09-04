@@ -1010,6 +1010,7 @@ def _guest_order_payable_total_cents(session: Session, order: models.Order) -> i
         select(models.OrderItem).where(models.OrderItem.order_id == order.id)
     ).all()
     subtotal = sum((item.price_cents or 0) * item.quantity for item in items)
+    subtotal += sum(int(item.tax_amount_cents or 0) for item in items)
     if _order_channel_value(order) == models.OrderChannel.satisfecho_delivery.value:
         from app.delivery_order_service import order_delivery_fee_cents
 
@@ -1304,6 +1305,7 @@ def get_public_delivery_order_status(
     )
 
     subtotal = sum((item.price_cents or 0) * item.quantity for item in items)
+    tax_cents = sum(int(item.tax_amount_cents or 0) for item in items)
     fee = order_delivery_fee_cents(order)
     tenant = session.get(models.Tenant, order.tenant_id)
     return {
@@ -1315,8 +1317,9 @@ def get_public_delivery_order_status(
         "paid": order.paid_at is not None,
         "delivery_address": order.delivery_address,
         "subtotal_cents": subtotal,
+        "tax_cents": tax_cents,
         "delivery_fee_cents": fee,
-        "total_cents": subtotal + fee,
+        "total_cents": subtotal + tax_cents + fee,
         "created_at": order.created_at.isoformat() if order.created_at else None,
         "updated_hint": order.paid_at.isoformat() if order.paid_at else (
             order.created_at.isoformat() if order.created_at else None
@@ -1423,8 +1426,9 @@ def create_public_satisfecho_delivery_order(
         select(models.OrderItem).where(models.OrderItem.order_id == order.id)
     ).all()
     subtotal_cents = sum((item.price_cents or 0) * item.quantity for item in items)
+    tax_cents = sum(int(item.tax_amount_cents or 0) for item in items)
     delivery_fee = order_delivery_fee_cents(order)
-    total_cents = subtotal_cents + delivery_fee
+    total_cents = subtotal_cents + tax_cents + delivery_fee
     revolut_configured = bool(
         (tenant.revolut_merchant_secret and tenant.revolut_merchant_secret.strip())
         or (settings.revolut_merchant_secret and settings.revolut_merchant_secret.strip())
@@ -1441,6 +1445,7 @@ def create_public_satisfecho_delivery_order(
         "notes": order.notes,
         "table_id": order.table_id,
         "subtotal_cents": subtotal_cents,
+        "tax_cents": tax_cents,
         "delivery_fee_cents": delivery_fee,
         "total_cents": total_cents,
         "public_order_token": _sign_public_delivery_order_token(order.id, tenant_id),
@@ -7002,7 +7007,9 @@ def _serialize_courier_order_summary(
     if not active_items:
         return {}
     status = _courier_effective_order_status(order, all_items)
-    total_cents = sum(item.price_cents * item.quantity for item in active_items)
+    total_cents = sum(item.price_cents * item.quantity for item in active_items) + sum(
+        int(item.tax_amount_cents or 0) for item in active_items
+    )
     row = {
         "id": order.id,
         "status": status.value,
@@ -7039,7 +7046,9 @@ def _serialize_courier_order_detail(
     if not active_items:
         return {}
     status = _courier_effective_order_status(order, all_items)
-    total_cents = sum(item.price_cents * item.quantity for item in active_items)
+    total_cents = sum(item.price_cents * item.quantity for item in active_items) + sum(
+        int(item.tax_amount_cents or 0) for item in active_items
+    )
     items_json = [
         {
             "product_name": item.product_name,
@@ -12095,11 +12104,14 @@ def get_menu(
                     if stored:
                         image_filename = stored
 
+        effective_tax = _get_effective_tax(session, table.tenant_id, getattr(tp, "tax_id", None))
+
         # Build product data with detailed wine information
         product_data = {
             "id": tp.id,
             "name": tp.name or "",
             "price_cents": tp.price_cents,
+            "tax_rate_percent": effective_tax.rate_percent if effective_tax else 0,
             "image_filename": image_filename,
             "tenant_id": tp.tenant_id,
             "ingredients": tp.ingredients,
@@ -12323,10 +12335,12 @@ def get_menu(
     for lp in legacy_products:
         if lp.id in linked_legacy_product_ids:
             continue
+        effective_tax = _get_effective_tax(session, table.tenant_id, getattr(lp, "tax_id", None))
         product_data = {
             "id": lp.id,
             "name": lp.name,
             "price_cents": lp.price_cents,
+            "tax_rate_percent": effective_tax.rate_percent if effective_tax else 0,
             "description": lp.description,
             "image_filename": lp.image_filename,
             "tenant_id": lp.tenant_id,
@@ -12584,7 +12598,8 @@ def get_current_order(
                 }
                 for item in items
             ],
-            "total_cents": sum(item.price_cents * item.quantity for item in items),
+            "total_cents": sum(item.price_cents * item.quantity for item in items)
+            + sum(int(item.tax_amount_cents or 0) for item in items),
         }
     }
     return JSONResponse(content=payload)
@@ -12626,7 +12641,9 @@ def get_table_order_history(
                 models.OrderItem.removed_by_customer == False,
             )
         ).all()
-        total_cents = sum(item.price_cents * item.quantity for item in items)
+        total_cents = sum(item.price_cents * item.quantity for item in items) + sum(
+            int(item.tax_amount_cents or 0) for item in items
+        )
         result.append({
             "id": order.id,
             "status": order.status.value,
@@ -12780,12 +12797,12 @@ def _tenantproduct_price_cents_guard(
         )
 
 
-def _tax_amount_cents_inclusive(price_cents: int, quantity: int, rate_percent: int) -> int:
-    """Tax amount from tax-inclusive price. rate_percent e.g. 10, 21, 0."""
+def _tax_amount_cents_exclusive(price_cents: int, quantity: int, rate_percent: int) -> int:
+    """IVA added on top of a net (tax-exclusive) price_cents. rate_percent e.g. 10, 15, 21, 0."""
     if rate_percent <= 0:
         return 0
-    total_incl = price_cents * quantity
-    return round(total_incl * rate_percent / (100 + rate_percent))
+    total_net = price_cents * quantity
+    return round(total_net * rate_percent / 100)
 
 
 @app.post("/menu/{table_token}/order")
@@ -13081,7 +13098,7 @@ def create_order(
             product_name=product_name,
         )
 
-        # Apply eligible line promo (#322) — discount tax-inclusive list price, recompute tax
+        # Apply eligible line promo (#322) — discount net (tax-exclusive) list price, recompute tax
         product_category = None
         eff_product = session.get(models.Product, effective_product_id)
         if eff_product and eff_product.category:
@@ -13107,7 +13124,7 @@ def create_order(
         effective_tax = _get_effective_tax(session, table.tenant_id, product_tax_id, order_date)
         tax_id = effective_tax.id if effective_tax else None
         tax_rate = effective_tax.rate_percent if effective_tax else 0
-        line_tax_cents = _tax_amount_cents_inclusive(price_cents, item.quantity, tax_rate) if effective_tax else 0
+        line_tax_cents = _tax_amount_cents_exclusive(price_cents, item.quantity, tax_rate) if effective_tax else 0
 
         # Check if this product already exists in the order with same customization (only active, non-removed items)
         # Match by effective_product_id and same customization_answers so we merge only when preferences match
@@ -13146,7 +13163,7 @@ def create_order(
             # Recompute tax for new total quantity
             existing_item.tax_id = tax_id
             existing_item.tax_rate_percent = tax_rate if effective_tax else None
-            existing_item.tax_amount_cents = _tax_amount_cents_inclusive(
+            existing_item.tax_amount_cents = _tax_amount_cents_exclusive(
                 price_cents, existing_item.quantity, tax_rate
             ) if effective_tax else None
             session.add(existing_item)
@@ -13827,9 +13844,10 @@ def list_orders(
         if len(active_items) == 0:
             continue
         subtotal_cents = sum(item.price_cents * item.quantity for item in active_items)
+        tax_cents = sum(int(item.tax_amount_cents or 0) for item in active_items)
         tip_amt = int(order.tip_amount_cents or 0)
         loyalty_discount = order_level_discount_cents(order)
-        total_cents = max(0, subtotal_cents - loyalty_discount) + tip_amt
+        total_cents = max(0, subtotal_cents + tax_cents - loyalty_discount) + tip_amt
 
         # Product categories for kitchen/bar display filtering (one query per order)
         product_ids = list({i.product_id for i in items})
@@ -13924,6 +13942,7 @@ def list_orders(
             "external_order_ref": getattr(order, "external_order_ref", None),
             "items": order_items_json,
             "subtotal_cents": subtotal_cents,
+            "tax_cents": tax_cents,
             "loyalty_membership_id": getattr(order, "loyalty_membership_id", None),
             "loyalty_discount_cents": loyalty_discount,
             "loyalty_units_redeemed": int(getattr(order, "loyalty_units_redeemed", 0) or 0),

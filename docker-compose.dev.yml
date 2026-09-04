@@ -15,4 +15,4 @@ services:
   haproxy:
     ports:
       - "0.0.0.0:${FRONTEND_PORT:-4202}:4202"
-      - "127.0.0.1:80:4202"
+      # - "127.0.0.1:80:4202"  # deshabilitado localmente: puerto 80 ocupado en este host

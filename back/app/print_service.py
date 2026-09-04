@@ -181,7 +181,8 @@ def _order_total_cents(items: list[models.OrderItem], order: models.Order) -> in
     tip = int(order.tip_amount_cents or 0)
     loyalty = int(getattr(order, "loyalty_discount_cents", 0) or 0)
     sub = sum(int(i.price_cents or 0) * int(i.quantity or 1) for i in items)
-    return max(0, sub + tip - loyalty)
+    tax = sum(int(getattr(i, "tax_amount_cents", 0) or 0) for i in items)
+    return max(0, sub + tax + tip - loyalty)
 
 
 def _build_order_payload(session: Session, order: models.Order, job_type: str) -> dict[str, Any]:

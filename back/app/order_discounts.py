@@ -1,8 +1,9 @@
 """Shared order-level discount helpers (#322 / #327).
 
-Line-level promos reduce ``OrderItem.price_cents`` (tax-inclusive) and store an
-audit snapshot. Order-level discounts (loyalty redemption today) subtract from
-payable / fiscal totals via :func:`order_level_discount_cents`.
+Line-level promos reduce ``OrderItem.price_cents`` (tax-exclusive net price; IVA is
+added on top via ``tax_amount_cents``) and store an audit snapshot. Order-level
+discounts (loyalty redemption today) subtract from payable / fiscal totals via
+:func:`order_level_discount_cents`.
 """
 
 from __future__ import annotations

@@ -16,7 +16,7 @@ def suggest_price(
     rounding_step_cents: int | None = None,
 ) -> dict:
     """
-    Compute a suggested selling price (tax-inclusive convention unchanged).
+    Compute a suggested selling price (net, tax-exclusive; IVA is added on top at checkout).
 
     Exactly one of target_pour_cost_pct, target_margin_pct, target_markup_pct must be set.
     Rounding is applied last to suggested_price_cents.

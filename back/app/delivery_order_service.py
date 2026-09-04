@@ -172,11 +172,12 @@ def customer_delivery_track_status(
     return "received"
 
 
-def _tax_amount_cents_inclusive(price_cents: int, quantity: int, rate_percent: int) -> int:
+def _tax_amount_cents_exclusive(price_cents: int, quantity: int, rate_percent: int) -> int:
+    """IVA added on top of a net (tax-exclusive) price_cents; the customer pays price + tax."""
     if rate_percent <= 0:
         return 0
-    total_incl = price_cents * quantity
-    return round(total_incl * rate_percent / (100 + rate_percent))
+    total_net = price_cents * quantity
+    return round(total_net * rate_percent / 100)
 
 
 def _effective_tax(
@@ -301,7 +302,7 @@ def _add_order_items(
         )
         price_cents = applied["price_cents"]
         line_tax_cents = (
-            _tax_amount_cents_inclusive(price_cents, qty, tax_rate) if effective_tax else 0
+            _tax_amount_cents_exclusive(price_cents, qty, tax_rate) if effective_tax else 0
         )
         oi = models.OrderItem(
             order_id=order.id,

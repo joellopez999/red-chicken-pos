@@ -1832,11 +1832,21 @@ $cart-expanded-max: 60vh;
   border-top: 1px solid var(--color-border);
 }
 
+.cart-subtotal-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  padding: 1px 0;
+}
+
 .cart-total-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   font-size: 1rem;
+  margin-top: 4px;
 
   .cart-grand-total {
     font-size: 1.25rem;

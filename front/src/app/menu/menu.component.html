@@ -564,6 +564,16 @@
       </div>
 
       <div class="cart-totals">
+        <div class="cart-subtotal-row">
+          <span>{{ 'ORDERS.SUBTOTAL' | translate }}</span>
+          <span>{{ formatPrice(getSubtotal()) }}</span>
+        </div>
+        @if (getTaxCents() > 0) {
+          <div class="cart-subtotal-row">
+            <span>{{ 'ORDERS.TAX' | translate }}</span>
+            <span>{{ formatPrice(getTaxCents()) }}</span>
+          </div>
+        }
         <div class="cart-total-row">
           <span>{{ 'COMMON.TOTAL' | translate }}</span>
           <span class="cart-grand-total">{{ formatPrice(getTotal()) }}</span>

@@ -14,6 +14,7 @@ import {
   FiscalInvoicePublic,
   TseTransactionPublic,
   Product,
+  Tax,
   User,
   OrderDeliveryUpdate,
 } from '../services/api.service';
@@ -330,7 +331,7 @@ ModuleRegistry.registerModules([
                             {{ 'ORDERS.PAY_NOW' | translate }}
                           </button>
                         }
-                        @if (order.status !== 'paid' && order.status !== 'cancelled' && canFinishOrder()) {
+                        @if (order.status !== 'paid' && order.status !== 'cancelled' && order.status !== 'completed' && canFinishOrder()) {
                           <button type="button" class="btn btn-success" (click)="openFinishPaymentModal(order)" [title]="'ORDERS.FINISH_ORDER_MENU' | translate">
                             {{ 'ORDERS.FINISH_ORDER' | translate }}
                           </button>
@@ -393,7 +394,7 @@ ModuleRegistry.registerModules([
                                   </button>
                                 </div>
                               }
-                              @if (order.status !== 'paid' && order.status !== 'cancelled' && canFinishOrder()) {
+                              @if (order.status !== 'paid' && order.status !== 'cancelled' && order.status !== 'completed' && canFinishOrder()) {
                                 <div class="dropdown-section">
                                   <button
                                     class="dropdown-item forward"
@@ -660,7 +661,7 @@ ModuleRegistry.registerModules([
                               {{ 'ORDERS.PAY_NOW' | translate }}
                             </button>
                           }
-                          @if (order.status !== 'paid' && order.status !== 'cancelled' && canFinishOrder()) {
+                          @if (order.status !== 'paid' && order.status !== 'cancelled' && order.status !== 'completed' && canFinishOrder()) {
                             <button type="button" class="btn btn-success" (click)="openFinishPaymentModal(order)" [title]="'ORDERS.FINISH_ORDER_MENU' | translate">
                               {{ 'ORDERS.FINISH_ORDER' | translate }}
                             </button>
@@ -723,7 +724,7 @@ ModuleRegistry.registerModules([
                                     </button>
                                   </div>
                                 }
-                                @if (order.status !== 'paid' && order.status !== 'cancelled' && canFinishOrder()) {
+                                @if (order.status !== 'paid' && order.status !== 'cancelled' && order.status !== 'completed' && canFinishOrder()) {
                                   <div class="dropdown-section">
                                     <button
                                       class="dropdown-item forward"
@@ -877,7 +878,7 @@ ModuleRegistry.registerModules([
                           @if (order.status !== 'paid' && order.status !== 'cancelled' && canMarkPaid()) {
                             <button type="button" class="btn btn-primary" (click)="markAsPaid(order)">{{ 'ORDERS.PAY_NOW' | translate }}</button>
                           }
-                          @if (order.status !== 'paid' && order.status !== 'cancelled' && canFinishOrder()) {
+                          @if (order.status !== 'paid' && order.status !== 'cancelled' && order.status !== 'completed' && canFinishOrder()) {
                             <button type="button" class="btn btn-success" (click)="openFinishPaymentModal(order)">{{ 'ORDERS.FINISH_ORDER' | translate }}</button>
                           }
                           @if (order.status === 'paid' && canFinishOrder()) {
@@ -1045,7 +1046,7 @@ ModuleRegistry.registerModules([
                 @if (order.status !== 'paid' && order.status !== 'cancelled' && canMarkPaid()) {
                   <button type="button" class="btn btn-primary" (click)="markEditOrderAsPaid(order)">{{ 'ORDERS.MARK_AS_PAID' | translate }}</button>
                 }
-                @if (order.status !== 'paid' && order.status !== 'cancelled' && canFinishOrder()) {
+                @if (order.status !== 'paid' && order.status !== 'cancelled' && order.status !== 'completed' && canFinishOrder()) {
                   <button type="button" class="btn btn-success" (click)="markEditOrderFinish(order)">{{ 'ORDERS.FINISH_ORDER' | translate }}</button>
                 }
               </div>
@@ -1056,7 +1057,7 @@ ModuleRegistry.registerModules([
         <!-- Create Satisfecho Delivery Order Modal -->
         @if (createDeliveryOpen()) {
           <div class="modal-overlay">
-            <div class="modal modal-order-edit" (click)="$event.stopPropagation()" appFocusFirstInput>
+            <div class="modal modal-delivery-create" (click)="$event.stopPropagation()" appFocusFirstInput>
               <div class="modal-header">
                 <h3>{{ 'ORDERS.NEW_DELIVERY_ORDER' | translate }}</h3>
                 <button class="icon-btn" (click)="closeCreateDeliveryModal()">
@@ -1065,57 +1066,105 @@ ModuleRegistry.registerModules([
                   </svg>
                 </button>
               </div>
-              <div class="modal-body">
-                <p class="modal-hint">{{ 'ORDERS.NEW_DELIVERY_HINT' | translate }}</p>
-                <div class="form-group">
-                  <label for="delivery-address">{{ 'ORDERS.DELIVERY_ADDRESS' | translate }} *</label>
-                  <input id="delivery-address" type="text" class="form-input" [(ngModel)]="deliveryFormAddress" name="deliveryAddress" required />
+              <div class="modal-body delivery-create-grid">
+                <div class="delivery-create-info">
+                  <p class="modal-hint">{{ 'ORDERS.NEW_DELIVERY_HINT' | translate }}</p>
+                  <div class="form-group">
+                    <label for="delivery-address">{{ 'ORDERS.DELIVERY_ADDRESS' | translate }} *</label>
+                    <input id="delivery-address" type="text" class="form-input" [(ngModel)]="deliveryFormAddress" name="deliveryAddress" required />
+                  </div>
+                  <div class="form-group">
+                    <label for="delivery-phone">{{ 'ORDERS.DELIVERY_PHONE' | translate }}</label>
+                    <input id="delivery-phone" type="tel" class="form-input" [(ngModel)]="deliveryFormPhone" name="deliveryPhone" />
+                  </div>
+                  <div class="form-group">
+                    <label for="delivery-customer">{{ 'ORDERS.CUSTOMER' | translate }}</label>
+                    <input id="delivery-customer" type="text" class="form-input" [(ngModel)]="deliveryFormCustomerName" name="deliveryCustomer" />
+                  </div>
+                  <div class="form-group">
+                    <label for="delivery-notes">{{ 'ORDERS.ORDER_NOTES' | translate }}</label>
+                    <textarea id="delivery-notes" class="form-input modifier-textarea" rows="2" [(ngModel)]="deliveryFormNotes" name="deliveryNotes"></textarea>
+                  </div>
+                  <div class="form-group">
+                    <label for="delivery-courier">{{ 'ORDERS.COURIER' | translate }}</label>
+                    <select id="delivery-courier" class="form-select" [(ngModel)]="deliveryFormCourierId" name="deliveryCourier">
+                      <option [ngValue]="null">{{ 'COMMON.NONE' | translate }}</option>
+                      @for (c of couriers(); track c.id) {
+                        <option [ngValue]="c.id">{{ c.full_name || c.email }}</option>
+                      }
+                    </select>
+                  </div>
                 </div>
-                <div class="form-group">
-                  <label for="delivery-phone">{{ 'ORDERS.DELIVERY_PHONE' | translate }}</label>
-                  <input id="delivery-phone" type="tel" class="form-input" [(ngModel)]="deliveryFormPhone" name="deliveryPhone" />
-                </div>
-                <div class="form-group">
-                  <label for="delivery-customer">{{ 'ORDERS.CUSTOMER' | translate }}</label>
-                  <input id="delivery-customer" type="text" class="form-input" [(ngModel)]="deliveryFormCustomerName" name="deliveryCustomer" />
-                </div>
-                <div class="form-group">
-                  <label for="delivery-notes">{{ 'ORDERS.ORDER_NOTES' | translate }}</label>
-                  <textarea id="delivery-notes" class="form-input modifier-textarea" rows="2" [(ngModel)]="deliveryFormNotes" name="deliveryNotes"></textarea>
-                </div>
-                <div class="form-group">
-                  <label for="delivery-courier">{{ 'ORDERS.COURIER' | translate }}</label>
-                  <select id="delivery-courier" class="form-select" [(ngModel)]="deliveryFormCourierId" name="deliveryCourier">
-                    <option [ngValue]="null">{{ 'COMMON.NONE' | translate }}</option>
-                    @for (c of couriers(); track c.id) {
-                      <option [ngValue]="c.id">{{ c.full_name || c.email }}</option>
-                    }
-                  </select>
-                </div>
-                <div class="edit-order-label">{{ 'ORDERS.ITEMS' | translate }} *</div>
-                <div class="delivery-draft-items">
-                  @for (line of deliveryDraftItems; track $index; let i = $index) {
-                    <div class="edit-order-row">
-                      <span class="edit-item-name">{{ line.name }} × {{ line.quantity }}</span>
-                      <button type="button" class="btn btn-sm btn-secondary" (click)="removeDeliveryDraftItem(i)">{{ 'ORDERS.REMOVE_ITEM' | translate }}</button>
+
+                <div class="delivery-create-items">
+                  <div class="edit-order-label">{{ 'ORDERS.ITEMS' | translate }} *</div>
+                  <div class="delivery-items-add-row">
+                    <select class="form-select" [(ngModel)]="deliveryAddProductId" name="deliveryAddProduct">
+                      <option [ngValue]="null">{{ 'COMMON.SELECT' | translate }}</option>
+                      @for (p of deliveryProducts(); track p.id) {
+                        <option [ngValue]="p.id">{{ p.name }} — {{ formatPrice(p.price_cents) }}</option>
+                      }
+                    </select>
+                    <input type="number" class="quantity-input" [(ngModel)]="deliveryAddQuantity" min="1" name="deliveryAddQty" />
+                    <button type="button" class="btn btn-secondary" (click)="addDeliveryDraftItem()" [disabled]="!deliveryAddProductId || deliveryAddQuantity < 1">
+                      {{ 'COMMON.ADD' | translate }}
+                    </button>
+                  </div>
+
+                  <div class="delivery-items-table-wrap">
+                    <table class="delivery-items-table">
+                      <thead>
+                        <tr>
+                          <th class="col-item">{{ 'ORDERS.GRID.ITEMS' | translate }}</th>
+                          <th class="col-qty">{{ 'ORDERS.QUANTITY' | translate }}</th>
+                          <th class="col-price">{{ 'ORDERS.TOTAL' | translate }}</th>
+                          <th class="col-actions"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (line of deliveryDraftItems; track $index; let i = $index) {
+                          <tr>
+                            <td class="col-item">{{ line.name }}</td>
+                            <td class="col-qty">{{ line.quantity }}</td>
+                            <td class="col-price">{{ formatPrice(line.price_cents * line.quantity) }}</td>
+                            <td class="col-actions">
+                              <button type="button" class="btn-remove-row" (click)="removeDeliveryDraftItem(i)" [title]="'ORDERS.REMOVE_ITEM' | translate">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                  <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                                  <line x1="10" y1="11" x2="10" y2="17"/>
+                                  <line x1="14" y1="11" x2="14" y2="17"/>
+                                </svg>
+                              </button>
+                            </td>
+                          </tr>
+                        } @empty {
+                          <tr>
+                            <td colspan="4" class="delivery-items-empty">{{ 'ORDERS.NO_ITEMS_ADDED' | translate }}</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+
+                  @if (deliveryDraftItems.length > 0) {
+                    <div class="delivery-items-totals">
+                      <div class="payment-amount-line">
+                        {{ 'ORDERS.SUBTOTAL' | translate }}: {{ formatPrice(deliveryDraftSubtotalCents()) }}
+                      </div>
+                      @if (deliveryDraftTaxCents() > 0) {
+                        <div class="payment-amount-line payment-tax-line">
+                          {{ 'ORDERS.TAX' | translate }}: {{ formatPrice(deliveryDraftTaxCents()) }}
+                        </div>
+                      }
+                      <div class="payment-amount-line" style="font-weight: 700; margin-bottom: 0;">
+                        {{ 'ORDERS.TOTAL' | translate }}: {{ formatPrice(deliveryDraftTotalCents()) }}
+                      </div>
                     </div>
                   }
                 </div>
-                <div class="add-items-row">
-                  <select class="form-select" [(ngModel)]="deliveryAddProductId" name="deliveryAddProduct">
-                    <option [ngValue]="null">{{ 'COMMON.SELECT' | translate }}</option>
-                    @for (p of deliveryProducts(); track p.id) {
-                      <option [ngValue]="p.id">{{ p.name }} — {{ formatPrice(p.price_cents) }}</option>
-                    }
-                  </select>
-                  <input type="number" class="quantity-input" [(ngModel)]="deliveryAddQuantity" min="1" name="deliveryAddQty" />
-                  <button type="button" class="btn btn-secondary" (click)="addDeliveryDraftItem()" [disabled]="!deliveryAddProductId || deliveryAddQuantity < 1">
-                    {{ 'COMMON.ADD' | translate }}
-                  </button>
-                </div>
               </div>
               <div class="modal-actions">
-                <button type="button" class="btn btn-secondary" (click)="closeCreateDeliveryModal()">{{ 'COMMON.CANCEL' | translate }}</button>
+                <button type="button" class="btn btn-secondary" (click)="cancelCreateDeliveryModal()">{{ 'COMMON.CANCEL' | translate }}</button>
                 <button type="button" class="btn btn-primary" (click)="submitCreateDelivery()" [disabled]="creatingDelivery() || !deliveryFormAddress.trim() || deliveryDraftItems.length === 0">
                   {{ creatingDelivery() ? ('COMMON.LOADING' | translate) : ('ORDERS.CREATE_DELIVERY' | translate) }}
                 </button>
@@ -1230,9 +1279,22 @@ ModuleRegistry.registerModules([
               </div>
               <div class="modal-body">
                 <p>{{ 'ORDERS.ORDER_ID' | translate }}{{ orderToMarkPaid()!.id }}</p>
+                <ul class="payment-items-list" data-testid="payment-items-list">
+                  @for (item of paymentOrderItems(orderToMarkPaid()!); track item.id) {
+                    <li class="payment-item-row">
+                      <span class="payment-item-name">{{ item.quantity }}× {{ item.product_name }}</span>
+                      <span class="payment-item-price">{{ formatPrice((item.price_cents || 0) * (item.quantity || 0)) }}</span>
+                    </li>
+                  }
+                </ul>
                 <p class="payment-amount-line">
                   {{ 'ORDERS.SUBTOTAL' | translate }}: {{ formatPrice(orderPaymentSubtotal(orderToMarkPaid()!)) }}
                 </p>
+                @for (tax of paymentTaxBreakdown(orderToMarkPaid()!); track tax.rate) {
+                  <p class="payment-amount-line payment-tax-line" data-testid="payment-tax-line">
+                    {{ 'ORDERS.TAX_LINE' | translate: { rate: tax.rate } }}: {{ formatPrice(tax.cents) }}
+                  </p>
+                }
                 @if ((orderToMarkPaid()!.loyalty_discount_cents || 0) > 0) {
                   <p class="payment-amount-line" data-testid="loyalty-discount-line">
                     {{ 'ORDERS.LOYALTY_DISCOUNT' | translate }}:
@@ -1264,53 +1326,72 @@ ModuleRegistry.registerModules([
                     }
                   </div>
                 }
-                @if (tipEntryModeOverpayment()) {
-                  <p class="modal-hint">{{ 'ORDERS.OVERPAYMENT_PAYMENT_HINT' | translate }}</p>
-                  <div class="form-group">
-                    <label for="payment-amount-charged">{{ 'ORDERS.AMOUNT_CHARGED' | translate }}</label>
-                    <input
-                      id="payment-amount-charged"
-                      type="text"
-                      inputmode="decimal"
-                      class="form-control"
-                      [(ngModel)]="paymentAmountPaidInput"
-                      (ngModelChange)="onPaymentAmountPaidChange()"
-                      name="paymentAmountPaid"
-                    />
-                  </div>
-                  <div class="form-group">
-                    <label for="payment-tip-amount">{{ 'ORDERS.TIP_AMOUNT_EDIT' | translate }}</label>
-                    <input
-                      id="payment-tip-amount"
-                      type="text"
-                      inputmode="decimal"
-                      class="form-control"
-                      [(ngModel)]="paymentTipAmountInput"
-                      name="paymentTipAmount"
-                    />
-                  </div>
-                  <p class="modal-hint payment-tip-preview">
-                    {{ 'ORDERS.TIP_AMOUNT' | translate }}: {{ formatPrice(paymentTipAmountDisplayCents()) }}
-                    — {{ 'ORDERS.AMOUNT_DUE' | translate }}: {{ formatPrice(paymentOverpaymentGrandTotalCents()) }}
-                  </p>
-                } @else if (tipPresetsForPayment().length > 0) {
-                  <div class="form-group payment-tip-group">
-                    <span class="form-label-text">{{ 'ORDERS.TIP' | translate }}</span>
-                    <div class="tip-preset-buttons">
-                      <button type="button" class="btn btn-sm" [class.btn-primary]="paymentTipPercent === 0" [class.btn-secondary]="paymentTipPercent !== 0" (click)="paymentTipPercent = 0">
-                        {{ 'ORDERS.TIP_NONE' | translate }}
-                      </button>
-                      @for (p of tipPresetsForPayment(); track p) {
-                        <button type="button" class="btn btn-sm" [class.btn-primary]="paymentTipPercent === p" [class.btn-secondary]="paymentTipPercent !== p" (click)="paymentTipPercent = p">
-                          {{ p }}%
-                        </button>
+                @if (tipEntryModeOverpayment() || tipPresetsForPayment().length > 0) {
+                  <div class="payment-collapsible">
+                    <button
+                      type="button"
+                      class="payment-collapsible-header"
+                      (click)="paymentTipSectionExpanded.set(!paymentTipSectionExpanded())"
+                      [attr.aria-expanded]="paymentTipSectionExpanded()"
+                    >
+                      <svg class="payment-collapsible-chevron" [class.open]="paymentTipSectionExpanded()" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <polyline points="9 6 15 12 9 18" />
+                      </svg>
+                      <span>{{ 'ORDERS.TIP' | translate }}</span>
+                      @if (!paymentTipSectionExpanded() && paymentTipPercent > 0) {
+                        <span class="payment-collapsible-summary">{{ paymentTipPercent }}%</span>
                       }
-                    </div>
-                    @if (paymentTipPercent > 0) {
-                      <p class="modal-hint payment-tip-preview">
-                        {{ 'ORDERS.TIP_AMOUNT' | translate }}: {{ formatPrice(paymentTipPreviewCents(orderToMarkPaid()!)) }}
-                        — {{ 'ORDERS.AMOUNT_DUE' | translate }}: {{ formatPrice(paymentGrandTotalCents(orderToMarkPaid()!)) }}
-                      </p>
+                    </button>
+                    @if (paymentTipSectionExpanded()) {
+                      @if (tipEntryModeOverpayment()) {
+                        <p class="modal-hint">{{ 'ORDERS.OVERPAYMENT_PAYMENT_HINT' | translate }}</p>
+                        <div class="form-group">
+                          <label for="payment-amount-charged">{{ 'ORDERS.AMOUNT_CHARGED' | translate }}</label>
+                          <input
+                            id="payment-amount-charged"
+                            type="text"
+                            inputmode="decimal"
+                            class="form-control"
+                            [(ngModel)]="paymentAmountPaidInput"
+                            (ngModelChange)="onPaymentAmountPaidChange()"
+                            name="paymentAmountPaid"
+                          />
+                        </div>
+                        <div class="form-group">
+                          <label for="payment-tip-amount">{{ 'ORDERS.TIP_AMOUNT_EDIT' | translate }}</label>
+                          <input
+                            id="payment-tip-amount"
+                            type="text"
+                            inputmode="decimal"
+                            class="form-control"
+                            [(ngModel)]="paymentTipAmountInput"
+                            name="paymentTipAmount"
+                          />
+                        </div>
+                        <p class="modal-hint payment-tip-preview">
+                          {{ 'ORDERS.TIP_AMOUNT' | translate }}: {{ formatPrice(paymentTipAmountDisplayCents()) }}
+                          — {{ 'ORDERS.AMOUNT_DUE' | translate }}: {{ formatPrice(paymentOverpaymentGrandTotalCents()) }}
+                        </p>
+                      } @else {
+                        <div class="form-group payment-tip-group">
+                          <div class="tip-preset-buttons">
+                            <button type="button" class="btn btn-sm" [class.btn-primary]="paymentTipPercent === 0" [class.btn-secondary]="paymentTipPercent !== 0" (click)="paymentTipPercent = 0">
+                              {{ 'ORDERS.TIP_NONE' | translate }}
+                            </button>
+                            @for (p of tipPresetsForPayment(); track p) {
+                              <button type="button" class="btn btn-sm" [class.btn-primary]="paymentTipPercent === p" [class.btn-secondary]="paymentTipPercent !== p" (click)="paymentTipPercent = p">
+                                {{ p }}%
+                              </button>
+                            }
+                          </div>
+                          @if (paymentTipPercent > 0) {
+                            <p class="modal-hint payment-tip-preview">
+                              {{ 'ORDERS.TIP_AMOUNT' | translate }}: {{ formatPrice(paymentTipPreviewCents(orderToMarkPaid()!)) }}
+                              — {{ 'ORDERS.AMOUNT_DUE' | translate }}: {{ formatPrice(paymentGrandTotalCents(orderToMarkPaid()!)) }}
+                            </p>
+                          }
+                        </div>
+                      }
                     }
                   </div>
                 }
@@ -1339,68 +1420,84 @@ ModuleRegistry.registerModules([
                       </ul>
                     }
                     @if (!paymentModalFinishMode() && paymentAmountRemainingCents(payOrder) > 0) {
-                      <div class="form-group" data-testid="split-by-line">
-                        <label>{{ 'ORDERS.SPLIT_BY_LINE' | translate }}</label>
-                        <p class="modal-hint">{{ 'ORDERS.SPLIT_BY_LINE_HINT' | translate }}</p>
-                        <ul class="split-line-list">
-                          @for (item of payableSplitLines(payOrder); track item.id) {
-                            <li>
-                              <label class="split-line-row">
-                                <input
-                                  type="checkbox"
-                                  [checked]="isSplitLineSelected(item.id)"
-                                  (change)="toggleSplitLine(item.id)"
-                                  [attr.data-testid]="'split-line-' + item.id"
-                                />
-                                <span>
-                                  {{ item.quantity }}× {{ item.product_name }}
-                                  — {{ formatPrice((item.price_cents || 0) * (item.quantity || 0)) }}
-                                </span>
-                              </label>
-                            </li>
-                          }
-                        </ul>
-                        @if (selectedSplitLineTotalCents(payOrder) > 0) {
-                          <p class="modal-hint" data-testid="split-line-total">
-                            {{ 'ORDERS.SPLIT_LINE_TOTAL' | translate }}:
-                            {{ formatPrice(selectedSplitLineTotalCents(payOrder)) }}
-                          </p>
+                      <div class="payment-collapsible">
+                        <button
+                          type="button"
+                          class="payment-collapsible-header"
+                          (click)="paymentSplitSectionExpanded.set(!paymentSplitSectionExpanded())"
+                          [attr.aria-expanded]="paymentSplitSectionExpanded()"
+                          data-testid="split-section-toggle"
+                        >
+                          <svg class="payment-collapsible-chevron" [class.open]="paymentSplitSectionExpanded()" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <polyline points="9 6 15 12 9 18" />
+                          </svg>
+                          <span>{{ 'ORDERS.PARTIAL_PAYMENT_SECTION' | translate }}</span>
+                        </button>
+                        @if (paymentSplitSectionExpanded()) {
+                          <div class="form-group" data-testid="split-by-line">
+                            <label>{{ 'ORDERS.SPLIT_BY_LINE' | translate }}</label>
+                            <p class="modal-hint">{{ 'ORDERS.SPLIT_BY_LINE_HINT' | translate }}</p>
+                            <ul class="split-line-list">
+                              @for (item of payableSplitLines(payOrder); track item.id) {
+                                <li>
+                                  <label class="split-line-row">
+                                    <input
+                                      type="checkbox"
+                                      [checked]="isSplitLineSelected(item.id)"
+                                      (change)="toggleSplitLine(item.id)"
+                                      [attr.data-testid]="'split-line-' + item.id"
+                                    />
+                                    <span>
+                                      {{ item.quantity }}× {{ item.product_name }}
+                                      — {{ formatPrice((item.price_cents || 0) * (item.quantity || 0)) }}
+                                    </span>
+                                  </label>
+                                </li>
+                              }
+                            </ul>
+                            @if (selectedSplitLineTotalCents(payOrder) > 0) {
+                              <p class="modal-hint" data-testid="split-line-total">
+                                {{ 'ORDERS.SPLIT_LINE_TOTAL' | translate }}:
+                                {{ formatPrice(selectedSplitLineTotalCents(payOrder)) }}
+                              </p>
+                            }
+                          </div>
+                          <div class="form-group">
+                            <label for="partial-pay-amount">{{ 'ORDERS.PARTIAL_PAYMENT_AMOUNT' | translate }}</label>
+                            <input
+                              id="partial-pay-amount"
+                              type="text"
+                              inputmode="decimal"
+                              class="form-control"
+                              [(ngModel)]="partialPaymentAmountInput"
+                              name="partialPaymentAmount"
+                              data-testid="partial-pay-amount"
+                              [disabled]="selectedSplitLineIds.size > 0"
+                            />
+                          </div>
+                          <div class="form-group">
+                            <label for="partial-pay-label">{{ 'ORDERS.PAYER_LABEL' | translate }}</label>
+                            <input
+                              id="partial-pay-label"
+                              type="text"
+                              class="form-control"
+                              [(ngModel)]="partialPaymentPayerLabel"
+                              name="partialPaymentPayerLabel"
+                              data-testid="partial-pay-label"
+                              [placeholder]="'ORDERS.PAYER_LABEL_HINT' | translate"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            class="btn btn-secondary"
+                            data-testid="record-partial-payment"
+                            (click)="confirmPartialPayment()"
+                            [disabled]="processingPayment()"
+                          >
+                            {{ 'ORDERS.RECORD_PARTIAL_PAYMENT' | translate }}
+                          </button>
                         }
                       </div>
-                      <div class="form-group">
-                        <label for="partial-pay-amount">{{ 'ORDERS.PARTIAL_PAYMENT_AMOUNT' | translate }}</label>
-                        <input
-                          id="partial-pay-amount"
-                          type="text"
-                          inputmode="decimal"
-                          class="form-control"
-                          [(ngModel)]="partialPaymentAmountInput"
-                          name="partialPaymentAmount"
-                          data-testid="partial-pay-amount"
-                          [disabled]="selectedSplitLineIds.size > 0"
-                        />
-                      </div>
-                      <div class="form-group">
-                        <label for="partial-pay-label">{{ 'ORDERS.PAYER_LABEL' | translate }}</label>
-                        <input
-                          id="partial-pay-label"
-                          type="text"
-                          class="form-control"
-                          [(ngModel)]="partialPaymentPayerLabel"
-                          name="partialPaymentPayerLabel"
-                          data-testid="partial-pay-label"
-                          [placeholder]="'ORDERS.PAYER_LABEL_HINT' | translate"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        class="btn btn-secondary"
-                        data-testid="record-partial-payment"
-                        (click)="confirmPartialPayment()"
-                        [disabled]="processingPayment()"
-                      >
-                        {{ 'ORDERS.RECORD_PARTIAL_PAYMENT' | translate }}
-                      </button>
                     }
                   </div>
                 }
@@ -2244,8 +2341,166 @@ ModuleRegistry.registerModules([
     }
     .payment-tip-preview { margin-top: var(--space-2); margin-bottom: 0; }
 
+    .payment-items-list {
+      list-style: none;
+      margin: 0 0 var(--space-3);
+      padding: 0 0 var(--space-3);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .payment-item-row {
+      display: flex;
+      justify-content: space-between;
+      gap: var(--space-3);
+      font-size: 0.875rem;
+      font-weight: 400;
+      padding: 0.15rem 0;
+    }
+    .payment-item-name { color: var(--color-text-muted); }
+    .payment-item-price { flex-shrink: 0; color: var(--color-text); }
+    .payment-tax-line {
+      font-size: 0.875rem;
+      font-weight: 400;
+      color: var(--color-text-muted);
+      margin-top: calc(-1 * var(--space-2));
+    }
+
+    .payment-collapsible {
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-4);
+      overflow: hidden;
+    }
+    .payment-collapsible-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      width: 100%;
+      padding: var(--space-3);
+      background: none;
+      border: none;
+      cursor: pointer;
+      text-align: left;
+      color: var(--color-text);
+      font: inherit;
+      font-weight: 600;
+      font-size: 0.875rem;
+    }
+    .payment-collapsible-chevron {
+      flex-shrink: 0;
+      color: var(--color-text-muted);
+      transition: transform 0.2s ease;
+    }
+    .payment-collapsible-chevron.open { transform: rotate(90deg); }
+    .payment-collapsible-summary {
+      margin-left: auto;
+      font-weight: 400;
+      color: var(--color-text-muted);
+    }
+    .payment-collapsible > .payment-collapsible-header + * {
+      margin-top: 0;
+    }
+    .payment-collapsible .form-group,
+    .payment-collapsible .modal-hint {
+      padding-left: var(--space-3);
+      padding-right: var(--space-3);
+    }
+    .payment-collapsible .form-group:last-child,
+    .payment-collapsible button.btn {
+      margin-bottom: var(--space-3);
+    }
+    .payment-collapsible button.btn {
+      margin-left: var(--space-3);
+    }
+
     .modal-order-edit { max-width: 520px; }
     .modal-order-edit .modal-body { max-height: 70dvh; overflow-y: auto; scroll-padding-bottom: var(--space-4); }
+
+    /* Create Satisfecho Delivery Order — two-column layout: info left, growing items table right */
+    .modal-delivery-create { max-width: 860px; }
+    .modal-delivery-create .modal-body { max-height: 75dvh; overflow-y: auto; scroll-padding-bottom: var(--space-4); }
+    .delivery-create-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+      gap: var(--space-5);
+      align-items: start;
+    }
+    @media (max-width: 720px) {
+      .delivery-create-grid { grid-template-columns: 1fr; }
+    }
+    .delivery-create-info .form-group:last-child { margin-bottom: 0; }
+    .delivery-create-items {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    .delivery-items-add-row {
+      display: flex;
+      gap: var(--space-2);
+      margin-bottom: var(--space-3);
+    }
+    .delivery-items-add-row .form-select { flex: 1; min-width: 0; }
+    .delivery-items-add-row .quantity-input { width: 64px; flex-shrink: 0; }
+    .delivery-items-table-wrap {
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }
+    .delivery-items-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    .delivery-items-table thead th {
+      text-align: left;
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      color: var(--color-text-muted);
+      background: rgba(0, 0, 0, 0.025);
+      padding: var(--space-2) var(--space-3);
+      border-bottom: 1px solid var(--color-border);
+      white-space: nowrap;
+    }
+    .delivery-items-table th.col-qty,
+    .delivery-items-table th.col-price,
+    .delivery-items-table td.col-qty,
+    .delivery-items-table td.col-price {
+      text-align: right;
+    }
+    .delivery-items-table th.col-actions { width: 1%; }
+    .delivery-items-table tbody td {
+      padding: var(--space-2) var(--space-3);
+      border-bottom: 1px solid var(--color-border);
+      vertical-align: middle;
+    }
+    .delivery-items-table tbody tr:last-child td { border-bottom: none; }
+    .delivery-items-table td.col-price { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .delivery-items-table .btn-remove-row {
+      display: flex;
+      align-items: center;
+      padding: var(--space-1);
+      border: none;
+      background: none;
+      color: var(--color-text-muted);
+      cursor: pointer;
+      border-radius: 6px;
+    }
+    .delivery-items-table .btn-remove-row:hover {
+      color: var(--color-error, #dc2626);
+      background: rgba(0, 0, 0, 0.05);
+    }
+    .delivery-items-empty {
+      text-align: center;
+      color: var(--color-text-muted);
+      font-size: 0.875rem;
+      padding: var(--space-5) var(--space-3) !important;
+    }
+    .delivery-items-totals {
+      margin-top: var(--space-3);
+      padding-top: var(--space-3);
+      border-top: 1px solid var(--color-border);
+    }
     .edit-order-items { margin-bottom: var(--space-4); }
     .edit-order-label { font-size: 0.75rem; font-weight: 600; color: var(--color-text-muted); text-transform: uppercase; margin-bottom: var(--space-2); }
     .edit-order-row {
@@ -2581,12 +2836,13 @@ export class OrdersComponent implements OnInit, OnDestroy {
   savingDelivery = signal(false);
   couriers = signal<User[]>([]);
   deliveryProducts = signal<Product[]>([]);
+  deliveryTaxes = signal<Tax[]>([]);
   deliveryFormAddress = '';
   deliveryFormPhone = '';
   deliveryFormCustomerName = '';
   deliveryFormNotes = '';
   deliveryFormCourierId: number | null = null;
-  deliveryDraftItems: { product_id: number; name: string; quantity: number }[] = [];
+  deliveryDraftItems: { product_id: number; name: string; quantity: number; price_cents: number; tax_rate_percent: number }[] = [];
   deliveryAddProductId: number | null = null;
   deliveryAddQuantity = 1;
   orderToMarkPaid = signal<Order | null>(null);
@@ -2595,6 +2851,9 @@ export class OrdersComponent implements OnInit, OnDestroy {
   paymentMethod = 'cash';
   /** Selected POS tip preset percent; 0 = no tip */
   paymentTipPercent = 0;
+  /** Collapsed by default in the payment modal — opened on demand so they don't crowd the checkout flow. */
+  paymentTipSectionExpanded = signal(false);
+  paymentSplitSectionExpanded = signal(false);
   loyaltyRedeemToken = '';
   loyaltyRedeeming = signal(false);
   loyaltyRedeemError = signal('');
@@ -2687,9 +2946,12 @@ export class OrdersComponent implements OnInit, OnDestroy {
     if (tid != null) list = list.filter(o => o.table_id === tid);
     return list;
   });
-  /** Satisfecho Delivery + marketplace delivery orders (Delivery tab). */
+  /** Satisfecho Delivery + marketplace delivery orders still pending delivery (Delivery tab). Completed/cancelled ones live in History. */
   deliveryOrders = computed(() => {
-    return this.orders().filter(o => this.isDeliveryChannel(o));
+    return this.orders().filter(o =>
+      this.isDeliveryChannel(o) &&
+      ['pending', 'preparing', 'ready', 'out_for_delivery', 'partially_delivered', 'paid'].includes(o.status)
+    );
   });
 
   // AG Grid configuration - custom light theme matching app colors
@@ -3117,6 +3379,19 @@ export class OrdersComponent implements OnInit, OnDestroy {
         error: () => this.deliveryProducts.set([]),
       });
     }
+    if (this.deliveryTaxes().length === 0) {
+      this.api.getTaxes().subscribe({
+        next: list => this.deliveryTaxes.set(list),
+        error: () => this.deliveryTaxes.set([]),
+      });
+    }
+  }
+
+  /** Effective IVA rate (%) for a product: its own tax_id override, else the tenant default. */
+  private effectiveTaxRatePercent(product: Product): number {
+    const taxId = product.tax_id ?? this.tenantSettings()?.default_tax_id ?? null;
+    if (!taxId) return 0;
+    return this.deliveryTaxes().find(t => t.id === taxId)?.rate_percent ?? 0;
   }
 
   openCreateDeliveryModal(): void {
@@ -3126,9 +3401,34 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.ensureDeliveryLookups();
   }
 
-  closeCreateDeliveryModal(): void {
+  /** Closes the modal outright — no draft-loss prompt. For Cancel and after a successful submit. */
+  private forceCloseCreateDeliveryModal(): void {
     this.createDeliveryOpen.set(false);
     this.resetDeliveryForm();
+  }
+
+  /** "Cancel" is already an explicit "I don't want this" — don't ask again. */
+  cancelCreateDeliveryModal(): void {
+    this.forceCloseCreateDeliveryModal();
+  }
+
+  /** The ✕ close button: may be an accidental click, so confirm if there's unsaved draft data. */
+  closeCreateDeliveryModal(): void {
+    const hasDraft =
+      !!this.deliveryFormAddress.trim() ||
+      !!this.deliveryFormPhone.trim() ||
+      !!this.deliveryFormCustomerName.trim() ||
+      !!this.deliveryFormNotes.trim() ||
+      this.deliveryDraftItems.length > 0;
+    if (!hasDraft) {
+      this.forceCloseCreateDeliveryModal();
+      return;
+    }
+    this.openConfirmModal(
+      this.translate.instant('ORDERS.DISCARD_DELIVERY_DRAFT_CONFIRM'),
+      () => this.forceCloseCreateDeliveryModal(),
+      { confirmText: this.translate.instant('COMMON.DISCARD') }
+    );
   }
 
   openEditDeliveryModal(order: Order): void {
@@ -3157,11 +3457,32 @@ export class OrdersComponent implements OnInit, OnDestroy {
     } else {
       this.deliveryDraftItems = [
         ...this.deliveryDraftItems,
-        { product_id: product.id, name: product.name, quantity: this.deliveryAddQuantity },
+        {
+          product_id: product.id,
+          name: product.name,
+          quantity: this.deliveryAddQuantity,
+          price_cents: product.price_cents,
+          tax_rate_percent: this.effectiveTaxRatePercent(product),
+        },
       ];
     }
     this.deliveryAddProductId = null;
     this.deliveryAddQuantity = 1;
+  }
+
+  deliveryDraftSubtotalCents(): number {
+    return this.deliveryDraftItems.reduce((s, l) => s + l.price_cents * l.quantity, 0);
+  }
+
+  deliveryDraftTaxCents(): number {
+    return this.deliveryDraftItems.reduce((s, l) => {
+      if (l.tax_rate_percent <= 0) return s;
+      return s + Math.round((l.price_cents * l.quantity * l.tax_rate_percent) / 100);
+    }, 0);
+  }
+
+  deliveryDraftTotalCents(): number {
+    return this.deliveryDraftSubtotalCents() + this.deliveryDraftTaxCents();
   }
 
   removeDeliveryDraftItem(index: number): void {
@@ -3189,7 +3510,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     }).subscribe({
       next: () => {
         this.creatingDelivery.set(false);
-        this.closeCreateDeliveryModal();
+        this.forceCloseCreateDeliveryModal();
         this.viewMode.set('delivery');
         this.loadOrders();
         this.showToast(this.translate.instant('ORDERS.DELIVERY_CREATED'), 'success');
@@ -3392,6 +3713,8 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.orderToMarkPaid.set(order);
     this.paymentMethod = 'cash';
     this.paymentTipPercent = 0;
+    this.paymentTipSectionExpanded.set(false);
+    this.paymentSplitSectionExpanded.set(false);
     this.paymentAmountPaidInput = '';
     this.paymentTipAmountInput = '';
   }
@@ -3402,6 +3725,8 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.orderToMarkPaid.set(order);
     this.paymentMethod = 'cash';
     this.paymentTipPercent = 0;
+    this.paymentTipSectionExpanded.set(false);
+    this.paymentSplitSectionExpanded.set(false);
     this.paymentAmountPaidInput = '';
     this.paymentTipAmountInput = '';
   }
@@ -4490,6 +4815,8 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.orderToMarkPaid.set(order);
     this.paymentMethod = 'cash'; // Reset to default
     this.paymentTipPercent = 0;
+    this.paymentTipSectionExpanded.set(false);
+    this.paymentSplitSectionExpanded.set(false);
     this.paymentAmountPaidInput = '';
     this.paymentTipAmountInput = '';
     this.partialPaymentAmountInput = '';
@@ -4503,6 +4830,8 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.orderToMarkPaid.set(order);
     this.paymentMethod = 'cash';
     this.paymentTipPercent = 0;
+    this.paymentTipSectionExpanded.set(false);
+    this.paymentSplitSectionExpanded.set(false);
     this.paymentAmountPaidInput = '';
     this.paymentTipAmountInput = '';
     this.partialPaymentAmountInput = '';
@@ -4515,6 +4844,8 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.paymentModalFinishMode.set(false);
     this.processingPayment.set(false);
     this.paymentTipPercent = 0;
+    this.paymentTipSectionExpanded.set(false);
+    this.paymentSplitSectionExpanded.set(false);
     this.paymentAmountPaidInput = '';
     this.paymentTipAmountInput = '';
     this.partialPaymentAmountInput = '';
@@ -4576,7 +4907,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     if (selected.size === 0) return 0;
     return this.payableSplitLines(order)
       .filter((i) => i.id != null && selected.has(i.id))
-      .reduce((s, i) => s + (i.price_cents || 0) * (i.quantity || 0), 0);
+      .reduce((s, i) => s + (i.price_cents || 0) * (i.quantity || 0) + (i.tax_amount_cents || 0), 0);
   }
 
   confirmPartialPayment() {
@@ -4666,6 +4997,26 @@ export class OrdersComponent implements OnInit, OnDestroy {
     return items.reduce((s, i) => s + (i.price_cents || 0) * (i.quantity || 0), 0);
   }
 
+  /** Active line items for the payment modal's itemized breakdown. */
+  paymentOrderItems(order: Order): OrderItem[] {
+    return (order.items || []).filter(i => !i.removed_by_customer && i.status !== 'cancelled');
+  }
+
+  /** IVA total grouped by rate, mirroring the printed invoice's tax summary. */
+  paymentTaxBreakdown(order: Order): { rate: number; cents: number }[] {
+    const byRate: Record<number, number> = {};
+    for (const i of this.paymentOrderItems(order)) {
+      const rate = i.tax_rate_percent ?? 0;
+      const cents = i.tax_amount_cents ?? 0;
+      if (rate > 0 && cents > 0) {
+        byRate[rate] = (byRate[rate] || 0) + cents;
+      }
+    }
+    return Object.entries(byRate)
+      .map(([rate, cents]) => ({ rate: Number(rate), cents }))
+      .sort((a, b) => a.rate - b.rate);
+  }
+
   tipEntryModeOverpayment(): boolean {
     return this.tenantSettings()?.tip_entry_mode === 'overpayment';
   }
@@ -4686,7 +5037,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   onPaymentAmountPaidChange(): void {
     const order = this.orderToMarkPaid();
     if (!order) return;
-    const sub = this.orderPaymentSubtotal(order);
+    const sub = this.orderPaymentSubtotal(order) + this.orderPaymentTaxCents(order);
     const paid = this.parseMoneyMajorToCents(this.paymentAmountPaidInput);
     const tip = Math.max(0, paid - sub);
     this.paymentTipAmountInput = (tip / 100).toFixed(2);
@@ -4724,18 +5075,28 @@ export class OrdersComponent implements OnInit, OnDestroy {
     return Math.floor((sub * p + 50) / 100);
   }
 
+  /** IVA owed on top of orderPaymentSubtotal; falls back to summing item tax_amount_cents. */
+  orderPaymentTaxCents(order: Order): number {
+    if (order.tax_cents != null && order.tax_cents >= 0) {
+      return order.tax_cents;
+    }
+    return this.paymentTaxBreakdown(order).reduce((s, t) => s + t.cents, 0);
+  }
+
   paymentGrandTotalCents(order: Order | null | undefined): number {
     if (!order) return 0;
     const discount = Math.max(0, order.loyalty_discount_cents || 0);
-    return Math.max(0, this.orderPaymentSubtotal(order) - discount) + this.paymentTipPreviewCents(order);
+    const base = this.orderPaymentSubtotal(order) + this.orderPaymentTaxCents(order);
+    return Math.max(0, base - discount) + this.paymentTipPreviewCents(order);
   }
 
   paymentOverpaymentGrandTotalCents(): number {
     const order = this.orderToMarkPaid();
     if (!order) return 0;
     const discount = Math.max(0, order.loyalty_discount_cents || 0);
+    const base = this.orderPaymentSubtotal(order) + this.orderPaymentTaxCents(order);
     return (
-      Math.max(0, this.orderPaymentSubtotal(order) - discount) +
+      Math.max(0, base - discount) +
       this.parseMoneyMajorToCents(this.paymentTipAmountInput)
     );
   }
@@ -4754,7 +5115,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
         order.loyalty_membership_id = res.membership_id;
         order.total_cents = Math.max(
           0,
-          this.orderPaymentSubtotal(order) - (res.discount_cents || 0),
+          this.orderPaymentSubtotal(order) + this.orderPaymentTaxCents(order) - (res.discount_cents || 0),
         ) + (order.tip_amount_cents || 0);
         this.loyaltyRedeemToken = '';
         this.orderToMarkPaid.set({ ...order });
@@ -4771,7 +5132,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     if (!order || !this.paymentMethod) return;
 
     if (this.tipEntryModeOverpayment()) {
-      const sub = this.orderPaymentSubtotal(order);
+      const sub = this.orderPaymentSubtotal(order) + this.orderPaymentTaxCents(order);
       const paid = this.parseMoneyMajorToCents(this.paymentAmountPaidInput);
       const tip = this.parseMoneyMajorToCents(this.paymentTipAmountInput);
       if (paid < sub + tip) {

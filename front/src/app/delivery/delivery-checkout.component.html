@@ -157,6 +157,12 @@
               </li>
             }
           </ul>
+          <p class="delivery-hint">
+            {{ 'DELIVERY_CHECKOUT.SUBTOTAL' | translate }}: {{ formatCents(cartSubtotalCents()) }}
+            @if (cartTaxCents() > 0) {
+              · {{ 'ORDERS.TAX' | translate }}: {{ formatCents(cartTaxCents()) }}
+            }
+          </p>
           <p class="delivery-total">
             <strong>{{ 'DELIVERY_CHECKOUT.TOTAL' | translate }}:</strong>
             {{ formatCents(cartTotalCents()) }}
@@ -263,10 +269,15 @@
           <strong>{{ 'DELIVERY_CHECKOUT.TOTAL' | translate }}:</strong>
           {{ formatCents(totalCents()) }}
         </p>
-        @if (deliveryFeeCents() > 0) {
+        @if (deliveryFeeCents() > 0 || taxCents() > 0) {
           <p class="delivery-hint">
             {{ 'DELIVERY_CHECKOUT.SUBTOTAL' | translate }}: {{ formatCents(subtotalCents()) }}
-            · {{ 'DELIVERY_CHECKOUT.DELIVERY_FEE' | translate }}: {{ formatCents(deliveryFeeCents()) }}
+            @if (taxCents() > 0) {
+              · {{ 'ORDERS.TAX' | translate }}: {{ formatCents(taxCents()) }}
+            }
+            @if (deliveryFeeCents() > 0) {
+              · {{ 'DELIVERY_CHECKOUT.DELIVERY_FEE' | translate }}: {{ formatCents(deliveryFeeCents()) }}
+            }
           </p>
         }
         @if (cardError()) {

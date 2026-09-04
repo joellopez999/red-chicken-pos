@@ -601,9 +601,22 @@ export class SidebarComponent implements OnInit, AfterViewInit, OnDestroy {
    * URL for the "open on mobile" QR. Uses the same host the staff device is on,
    * so when the POS is opened via the desktop launcher (LAN IP) the QR points at
    * the IP and works from a phone on the same Wi-Fi. Points at the staff login.
+   *
+   * If the page itself was loaded via "localhost"/"127.0.0.1" (stale tab,
+   * bookmark, typed manually) that host is useless to a phone, which can't
+   * resolve "localhost" as the POS machine. Fall back to window.__LAN_IP__,
+   * written by the desktop launcher into public/runtime-config.js on each
+   * start (see ~/.local/bin/red-chicken-pos.sh).
    */
   get mobileAccessUrl(): string {
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    if (typeof window === 'undefined') return '/login';
+    const { hostname, protocol, port, origin } = window.location;
+    const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1';
+    const lanIp = (window as { __LAN_IP__?: string }).__LAN_IP__;
+    if (isLocalHost && lanIp) {
+      const portSuffix = port ? `:${port}` : '';
+      return `${protocol}//${lanIp}${portSuffix}/login`;
+    }
     return `${origin}/login`;
   }
 

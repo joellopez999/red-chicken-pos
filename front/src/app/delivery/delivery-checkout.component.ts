@@ -79,6 +79,7 @@ export class DeliveryCheckoutComponent implements OnInit, OnDestroy {
   publicOrderToken = signal<string | null>(null);
   totalCents = signal(0);
   subtotalCents = signal(0);
+  taxCents = signal(0);
   deliveryFeeCents = signal(0);
   revolutConfigured = signal(false);
   stripeReady = signal(false);
@@ -95,14 +96,21 @@ export class DeliveryCheckoutComponent implements OnInit, OnDestroy {
   private collapsedCategoryIds = signal<Set<string>>(new Set());
 
   cartCount = computed(() => this.cart().reduce((n, l) => n + l.quantity, 0));
-  cartTotalCents = computed(() => {
-    const items = this.cart().reduce((sum, l) => sum + l.product.price_cents * l.quantity, 0);
-    const fee = this.deliveryConfig()?.delivery_fee_cents ?? 0;
-    return items + (fee > 0 ? fee : 0);
-  });
   cartSubtotalCents = computed(() =>
     this.cart().reduce((sum, l) => sum + l.product.price_cents * l.quantity, 0),
   );
+  cartTaxCents = computed(() =>
+    this.cart().reduce((sum, l) => {
+      const rate = l.product.tax_rate_percent || 0;
+      if (rate <= 0) return sum;
+      const lineNet = l.product.price_cents * l.quantity;
+      return sum + Math.round((lineNet * rate) / 100);
+    }, 0),
+  );
+  cartTotalCents = computed(() => {
+    const fee = this.deliveryConfig()?.delivery_fee_cents ?? 0;
+    return this.cartSubtotalCents() + this.cartTaxCents() + (fee > 0 ? fee : 0);
+  });
 
   constructor() {
     afterNextRender(() => this.updateDocumentTitle());
@@ -379,6 +387,7 @@ export class DeliveryCheckoutComponent implements OnInit, OnDestroy {
           this.publicOrderToken.set(res.public_order_token);
           this.totalCents.set(res.total_cents);
           this.subtotalCents.set(res.subtotal_cents ?? res.total_cents);
+          this.taxCents.set(res.tax_cents ?? 0);
           this.deliveryFeeCents.set(res.delivery_fee_cents ?? 0);
           this.revolutConfigured.set(!!res.revolut_configured);
           const key = res.stripe_publishable_key || environment.stripePublishableKey || '';

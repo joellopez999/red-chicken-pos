@@ -29,6 +29,11 @@ def order_subtotal_cents(session: Session, order: models.Order) -> int:
     return sum(i.price_cents * i.quantity for i in active_order_items(session, order.id))
 
 
+def order_tax_cents(session: Session, order: models.Order) -> int:
+    """IVA owed on top of order_subtotal_cents (prices are tax-exclusive)."""
+    return sum(int(i.tax_amount_cents or 0) for i in active_order_items(session, order.id))
+
+
 def _channel_value(order: models.Order) -> str:
     raw = getattr(order, "order_channel", None)
     if raw is None:
@@ -37,8 +42,8 @@ def _channel_value(order: models.Order) -> str:
 
 
 def order_due_cents(session: Session, order: models.Order, *, include_tip: bool = True) -> int:
-    """Amount still owed before payments: lines − discounts (+ tip when include_tip)."""
-    subtotal = order_subtotal_cents(session, order)
+    """Amount still owed before payments: lines + IVA − discounts (+ tip when include_tip)."""
+    subtotal = order_subtotal_cents(session, order) + order_tax_cents(session, order)
     if _channel_value(order) == models.OrderChannel.satisfecho_delivery.value:
         from .delivery_order_service import order_delivery_fee_cents
 
@@ -135,7 +140,7 @@ def resolve_line_payment_amount(
             detail=f"order_item_ids already allocated to another payment: {sorted(conflict)}",
         )
     items = [active[i] for i in sorted(wanted)]
-    amount = sum(int(i.price_cents) * int(i.quantity) for i in items)
+    amount = sum(int(i.price_cents) * int(i.quantity) + int(i.tax_amount_cents or 0) for i in items)
     if amount < 1:
         raise HTTPException(status_code=400, detail="Selected lines total must be at least 1 cent")
     return amount, items
@@ -251,7 +256,7 @@ def record_payment(
     session.flush()
 
     for item in line_items:
-        line_amt = int(item.price_cents) * int(item.quantity)
+        line_amt = int(item.price_cents) * int(item.quantity) + int(item.tax_amount_cents or 0)
         session.add(
             models.OrderPaymentItem(
                 tenant_id=order.tenant_id,

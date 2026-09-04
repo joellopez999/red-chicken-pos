@@ -931,8 +931,21 @@ export class MenuComponent implements OnInit, OnDestroy {
     return this.cart().reduce((sum, item) => sum + item.quantity, 0);
   }
 
-  getTotal(): number {
+  getSubtotal(): number {
     return this.cart().reduce((sum, item) => sum + item.product.price_cents * item.quantity, 0);
+  }
+
+  getTaxCents(): number {
+    return this.cart().reduce((sum, item) => {
+      const rate = item.product.tax_rate_percent || 0;
+      if (rate <= 0) return sum;
+      const lineNet = item.product.price_cents * item.quantity;
+      return sum + Math.round((lineNet * rate) / 100);
+    }, 0);
+  }
+
+  getTotal(): number {
+    return this.getSubtotal() + this.getTaxCents();
   }
 
   formatPrice(priceCents: number): string {

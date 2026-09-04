@@ -11,6 +11,7 @@ from sqlmodel import Session, select
 
 from . import models
 from . import promo_service as promo_svc
+from .delivery_order_service import _effective_tax
 from .category_codes import get_public_category_display_label
 from .tenant_currency import normalize_tenant_currency_fields
 from .translation_service import TranslationService
@@ -237,12 +238,14 @@ def _load_flat_products(
             lang,
         )
 
+        effective_tax = _effective_tax(session, tenant_id, getattr(tp, "tax_id", None))
         products.append(
             {
                 "id": tp.id,
                 "name": name,
                 "price_cents": tp.price_cents,
                 "price_formatted": format_public_price(tp.price_cents, lang),
+                "tax_rate_percent": effective_tax.rate_percent if effective_tax else 0,
                 "description": description,
                 "category": category,
                 "subcategory": subcategory,
@@ -260,12 +263,14 @@ def _load_flat_products(
         description = _translated_description(
             session, tenant_id, "product", lp.id, lp.description, lang
         )
+        effective_tax = _effective_tax(session, tenant_id, getattr(lp, "tax_id", None))
         products.append(
             {
                 "id": lp.id,
                 "name": name,
                 "price_cents": lp.price_cents,
                 "price_formatted": format_public_price(lp.price_cents, lang),
+                "tax_rate_percent": effective_tax.rate_percent if effective_tax else 0,
                 "description": description,
                 "category": lp.category,
                 "subcategory": lp.subcategory,
