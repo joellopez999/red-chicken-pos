@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal, computed } from '@angular/core';
+import { Component, OnInit, inject, signal, computed, effect } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { TranslateModule } from '@ngx-translate/core';
 import { ConnectivityService } from '../services/connectivity.service';
@@ -14,8 +14,26 @@ import { ApiService } from '../services/api.service';
   standalone: true,
   imports: [FormsModule, TranslateModule],
   template: `
-    <section class="offline-cash" [class.offline-cash--warn]="!connectivity.isOnline()">
-      <div class="offline-cash-head">
+    <section class="offline-cash" [class.offline-cash--warn]="!connectivity.isOnline()" [class.offline-cash--collapsed]="!expanded()">
+      <button
+        type="button"
+        class="offline-cash-head"
+        (click)="expanded.set(!expanded())"
+        [attr.aria-expanded]="expanded()"
+      >
+        <svg
+          class="offline-cash-chevron"
+          [class.open]="expanded()"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          aria-hidden="true"
+        >
+          <polyline points="9 6 15 12 9 18" />
+        </svg>
         <h2>{{ 'OFFLINE.CASH_SALE_TITLE' | translate }}</h2>
         <span
           class="offline-status"
@@ -34,7 +52,8 @@ import { ApiService } from '../services/api.service';
         @if (queue.pendingCount() > 0) {
           <span class="offline-pending">{{ 'OFFLINE.PENDING_SYNC' | translate: { count: queue.pendingCount() } }}</span>
         }
-      </div>
+      </button>
+      @if (expanded()) {
       <p class="offline-cash-hint">{{ 'OFFLINE.CASH_SALE_HINT' | translate }}</p>
       <p class="offline-cash-hint offline-cash-hint--secondary">{{ 'OFFLINE.CARD_DEFERRED_HINT' | translate }}</p>
       @if (!hasTakeAway()) {
@@ -99,6 +118,7 @@ import { ApiService } from '../services/api.service';
           }
         </ul>
       }
+      }
     </section>
   `,
   styles: `
@@ -109,6 +129,10 @@ import { ApiService } from '../services/api.service';
       border-radius: 6px;
       background: var(--color-surface, #fff);
     }
+    .offline-cash--collapsed {
+      padding: 0.4rem 0.6rem;
+      margin-bottom: 0.6rem;
+    }
     .offline-cash--warn {
       border-color: #d97706;
       background: #fffbeb;
@@ -118,11 +142,27 @@ import { ApiService } from '../services/api.service';
       flex-wrap: wrap;
       align-items: center;
       gap: 0.5rem 0.75rem;
+      width: 100%;
+      padding: 0.15rem 0;
+      background: none;
+      border: none;
+      cursor: pointer;
+      text-align: left;
+      color: inherit;
+      font: inherit;
     }
     .offline-cash-head h2 {
       margin: 0;
       font-size: 1rem;
       font-weight: 600;
+    }
+    .offline-cash-chevron {
+      flex-shrink: 0;
+      color: var(--color-text-muted, #6b7280);
+      transition: transform 0.2s ease;
+    }
+    .offline-cash-chevron.open {
+      transform: rotate(90deg);
     }
     .offline-status {
       font-size: 0.75rem;
@@ -210,6 +250,17 @@ export class OfflineCashSaleComponent implements OnInit {
   paymentIntent: OfflinePaymentIntent = 'cash';
   readonly submitting = signal(false);
   readonly messageKey = signal<string | null>(null);
+  /** Collapsed by default so it doesn't crowd the Orders view; opens on demand. */
+  readonly expanded = signal(false);
+
+  constructor() {
+    // Auto-open when it actually matters: offline, or there are sales waiting to sync.
+    effect(() => {
+      if (!this.connectivity.isOnline() || this.queue.pendingCount() > 0) {
+        this.expanded.set(true);
+      }
+    });
+  }
 
   readonly cacheProducts = computed(() => this.queue.cache()?.products ?? []);
   readonly hasTakeAway = computed(() => !!this.queue.cache()?.take_away_table);
