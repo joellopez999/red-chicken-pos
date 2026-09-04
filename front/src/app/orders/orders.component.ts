@@ -3165,7 +3165,14 @@ export class OrdersComponent implements OnInit, OnDestroy {
   }
 
   removeDeliveryDraftItem(index: number): void {
-    this.deliveryDraftItems = this.deliveryDraftItems.filter((_, i) => i !== index);
+    // Confirm before removing: the delete button is easy to hit by accident.
+    this.openConfirmModal(
+      this.translate.instant('ORDERS.REMOVE_ITEM_CONFIRM'),
+      () => {
+        this.deliveryDraftItems = this.deliveryDraftItems.filter((_, i) => i !== index);
+      },
+      { confirmText: this.translate.instant('COMMON.CONFIRM') }
+    );
   }
 
   submitCreateDelivery(): void {
