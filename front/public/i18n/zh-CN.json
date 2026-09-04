@@ -119,6 +119,8 @@
     "WORKING_PLAN": "排班计划",
     "MY_SHIFT": "我的班次",
     "GUEST_FEEDBACK": "顾客反馈",
+    "MOBILE_ACCESS": "在手机上打开",
+    "MOBILE_ACCESS_HINT": "用连接同一 Wi-Fi 的手机扫码即可打开 POS。",
     "LOGOUT": "退出登录",
     "GROUP_OPERATIONS": "运营",
     "GROUP_PLANNING": "计划",

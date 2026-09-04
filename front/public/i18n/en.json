@@ -119,6 +119,8 @@
     "WORKING_PLAN": "Working plan",
     "MY_SHIFT": "My shift",
     "GUEST_FEEDBACK": "Guest feedback",
+    "MOBILE_ACCESS": "Open on mobile",
+    "MOBILE_ACCESS_HINT": "Scan with a phone on the same Wi-Fi to open the POS.",
     "LOGOUT": "Logout",
     "GROUP_OPERATIONS": "Operations",
     "GROUP_PLANNING": "Planning",
