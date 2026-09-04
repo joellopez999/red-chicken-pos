@@ -119,6 +119,8 @@
     "WORKING_PLAN": "Schichtplan",
     "MY_SHIFT": "Meine Schicht",
     "GUEST_FEEDBACK": "Gäste-Feedback",
+    "MOBILE_ACCESS": "Auf dem Handy öffnen",
+    "MOBILE_ACCESS_HINT": "Mit einem Smartphone im selben WLAN scannen, um das POS zu öffnen.",
     "LOGOUT": "Abmelden",
     "GROUP_OPERATIONS": "Betrieb",
     "GROUP_PLANNING": "Planung",

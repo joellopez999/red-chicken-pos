@@ -119,6 +119,8 @@
     "WORKING_PLAN": "Pla de treball",
     "MY_SHIFT": "El meu torn",
     "GUEST_FEEDBACK": "Comentaris de clients",
+    "MOBILE_ACCESS": "Obrir al mòbil",
+    "MOBILE_ACCESS_HINT": "Escaneja-ho amb un mòbil a la mateixa xarxa Wi-Fi per obrir el TPV.",
     "LOGOUT": "Tancar sessió",
     "GROUP_OPERATIONS": "Operacions",
     "GROUP_PLANNING": "Planificació",

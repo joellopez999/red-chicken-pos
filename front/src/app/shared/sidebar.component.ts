@@ -8,6 +8,7 @@ import { PermissionService, Permission } from '../services/permission.service';
 import { environment } from '../../environments/environment';
 import { LanguagePickerComponent } from './language-picker.component';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
+import { QRCodeComponent } from 'angularx-qrcode';
 import { TablesAreaPreferenceService } from '../services/tables-area-preference.service';
 import { StaffLayoutService } from '../services/staff-layout.service';
 import { ConnectivityService } from '../services/connectivity.service';
@@ -18,7 +19,7 @@ type NavGroupKey = 'operations' | 'planning' | 'catalog' | 'admin';
 @Component({
   selector: 'app-sidebar',
   standalone: true,
-  imports: [RouterLink, RouterLinkActive, LanguagePickerComponent, TranslateModule],
+  imports: [RouterLink, RouterLinkActive, LanguagePickerComponent, TranslateModule, QRCodeComponent],
   template: `
     <div class="layout" [class.sidebar-open]="sidebarOpen()" [class.layout--nav-collapsed]="staffLayout.sidebarCollapsed()">
       <header class="mobile-header">
@@ -293,6 +294,34 @@ type NavGroupKey = 'operations' | 'planning' | 'catalog' | 'admin';
               <span class="user-role">{{ getRoleDisplayName() }}</span>
             </div>
           }
+          @if (user()) {
+            <div class="mobile-access">
+              <button
+                type="button"
+                class="mobile-access-toggle"
+                (click)="toggleMobileQr()"
+                [attr.aria-expanded]="mobileQrOpen()"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="7" height="7"/>
+                  <rect x="14" y="3" width="7" height="7"/>
+                  <rect x="3" y="14" width="7" height="7"/>
+                  <path d="M14 14h3v3h-3zM20 14h1M17 20h4M20 17v4"/>
+                </svg>
+                <span>{{ 'NAV.MOBILE_ACCESS' | translate }}</span>
+                <svg class="chevron" [class.open]="mobileQrOpen()" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+              @if (mobileQrOpen()) {
+                <div class="mobile-access-panel">
+                  <qrcode [qrdata]="mobileAccessUrl" [width]="160" [errorCorrectionLevel]="'M'" cssClass="mobile-access-qr"></qrcode>
+                  <span class="mobile-access-url">{{ mobileAccessUrl }}</span>
+                  <span class="mobile-access-hint">{{ 'NAV.MOBILE_ACCESS_HINT' | translate }}</span>
+                </div>
+              }
+            </div>
+          }
           <button class="logout-btn" (click)="logout()">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
@@ -560,6 +589,22 @@ export class SidebarComponent implements OnInit, AfterViewInit, OnDestroy {
   toggleInventory(event: Event) {
     event.stopPropagation();
     this.inventoryOpen.update(v => !v);
+  }
+
+  mobileQrOpen = signal(false);
+
+  toggleMobileQr() {
+    this.mobileQrOpen.update(v => !v);
+  }
+
+  /**
+   * URL for the "open on mobile" QR. Uses the same host the staff device is on,
+   * so when the POS is opened via the desktop launcher (LAN IP) the QR points at
+   * the IP and works from a phone on the same Wi-Fi. Points at the staff login.
+   */
+  get mobileAccessUrl(): string {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    return `${origin}/login`;
   }
 
   logout() {
