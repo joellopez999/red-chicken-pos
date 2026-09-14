@@ -1201,7 +1201,10 @@
     "TIMER_BAR_HINT": "等待时间相对红色阈值的进度",
     "STATION": "工位",
     "ALL_STATIONS": "全部工位",
-    "ITEM_COMMENT": "备注"
+    "ITEM_COMMENT": "备注",
+    "HISTORY": "历史记录",
+    "FINISH_ORDER": "完成订单",
+    "FINISH_ORDER_CONFIRM": "确认完成订单 #{{id}}？其所有商品都将标记为已送达。"
   },
   "BAR_DISPLAY": {
     "TITLE": "酒吧显示屏"

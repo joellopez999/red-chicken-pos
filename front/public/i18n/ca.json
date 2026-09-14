@@ -1201,7 +1201,10 @@
     "TIMER_BAR_HINT": "Progrés del temps d'espera fins al llindar vermell",
     "STATION": "Estació",
     "ALL_STATIONS": "Totes les estacions",
-    "ITEM_COMMENT": "Comentari"
+    "ITEM_COMMENT": "Comentari",
+    "HISTORY": "Historial",
+    "FINISH_ORDER": "Finalitzar comanda",
+    "FINISH_ORDER_CONFIRM": "Voleu finalitzar la comanda #{{id}}? Tots els seus productes es marcaran com a lliurats."
   },
   "BAR_DISPLAY": {
     "TITLE": "Pantalla bar"

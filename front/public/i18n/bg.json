@@ -1079,7 +1079,10 @@
     "TIMER_BAR_HINT": "Wait time progress toward red threshold",
     "STATION": "Станция",
     "ALL_STATIONS": "Всички репери",
-    "ITEM_COMMENT": "Коментар"
+    "ITEM_COMMENT": "Коментар",
+    "HISTORY": "История",
+    "FINISH_ORDER": "Приключи поръчката",
+    "FINISH_ORDER_CONFIRM": "Да се приключи поръчка #{{id}}? Всички нейни продукти ще бъдат маркирани като доставени."
   },
   "BAR_DISPLAY": {
     "TITLE": "Бар дисплей"

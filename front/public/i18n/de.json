@@ -2516,7 +2516,10 @@
     "TIMER_BAR_HINT": "Wartezeit-Fortschritt bis zur roten Schwelle",
     "STATION": "Station",
     "ALL_STATIONS": "Alle Stationen",
-    "ITEM_COMMENT": "Kommentar"
+    "ITEM_COMMENT": "Kommentar",
+    "HISTORY": "Verlauf",
+    "FINISH_ORDER": "Bestellung abschließen",
+    "FINISH_ORDER_CONFIRM": "Bestellung #{{id}} abschließen? Alle Artikel werden als geliefert markiert."
   },
   "BAR_DISPLAY": {
     "TITLE": "Bar-Anzeige"

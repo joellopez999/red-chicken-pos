@@ -1085,7 +1085,10 @@
     "TIMER_BAR_HINT": "Progreso del tiempo de espera hasta el umbral rojo",
     "STATION": "Estación",
     "ALL_STATIONS": "Todas las estaciones",
-    "ITEM_COMMENT": "Comentario"
+    "ITEM_COMMENT": "Comentario",
+    "HISTORY": "Historial",
+    "FINISH_ORDER": "Finalizar pedido",
+    "FINISH_ORDER_CONFIRM": "¿Finalizar el pedido #{{id}}? Se marcarán todos sus productos como entregados."
   },
   "BAR_DISPLAY": {
     "TITLE": "Pantalla bar"

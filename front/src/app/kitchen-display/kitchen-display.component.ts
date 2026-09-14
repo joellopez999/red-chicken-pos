@@ -17,6 +17,7 @@ import { AudioService } from '../services/audio.service';
 import { PermissionService } from '../services/permission.service';
 import { Subscription } from 'rxjs';
 import { FocusFirstInputDirective } from '../shared/focus-first-input.directive';
+import { ConfirmationModalComponent } from '../shared/confirmation-modal.component';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
 
 const REFRESH_INTERVAL_MS = 15000;
@@ -90,7 +91,7 @@ const VIEW_CATEGORY: Record<string, string> = {
   selector: 'app-kitchen-display',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, TranslateModule, FormsModule, FocusFirstInputDirective],
+  imports: [RouterLink, TranslateModule, FormsModule, FocusFirstInputDirective, ConfirmationModalComponent],
   template: `
     <div class="kitchen-view" #kitchenRoot>
       <header class="kitchen-header">
@@ -102,6 +103,19 @@ const VIEW_CATEGORY: Record<string, string> = {
         </a>
         <h1 class="kitchen-title">{{ pageTitle() }}</h1>
         <div class="header-actions">
+          <a
+            routerLink="/staff/orders"
+            [queryParams]="{ view: 'history' }"
+            class="history-btn"
+            data-testid="kitchen-history-link"
+            [title]="'KITCHEN_DISPLAY.HISTORY' | translate"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <circle cx="12" cy="12" r="9"/>
+              <path d="M12 7v5l3 3"/>
+            </svg>
+            {{ 'KITCHEN_DISPLAY.HISTORY' | translate }}
+          </a>
           @if (stationsForCurrentView().length > 0) {
             <label class="station-filter">
               <span class="station-filter-label">{{ 'KITCHEN_DISPLAY.STATION' | translate }}</span>
@@ -170,8 +184,24 @@ const VIEW_CATEGORY: Record<string, string> = {
               <article class="order-card status-{{ order.status }} {{ getTimerColorClass(order) }}" [class.order-card-urgent]="order.staff_urgent">
                 <div class="order-header">
                   <div class="order-meta">
-                    <span class="order-id">#{{ order.id }}</span>
-                    <span class="order-table">{{ order.table_name }}</span>
+                    <div class="order-id-row">
+                      <span class="order-id">#{{ order.id }}</span>
+                      @if (canUpdateItemStatus()) {
+                        <button
+                          type="button"
+                          class="finish-order-btn"
+                          data-testid="kitchen-finish-order"
+                          (click)="finishOrder(order)"
+                          [title]="'KITCHEN_DISPLAY.FINISH_ORDER' | translate"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                            <polyline points="20,6 9,17 4,12"/>
+                          </svg>
+                          {{ 'KITCHEN_DISPLAY.FINISH_ORDER' | translate }}
+                        </button>
+                      }
+                    </div>
+                    <span class="order-table">{{ getOrderChannelLabel(order) }}</span>
                     @if (order.staff_urgent) {
                       <span class="urgent-badge">{{ 'KITCHEN_DISPLAY.URGENT' | translate }}</span>
                     }
@@ -255,6 +285,18 @@ const VIEW_CATEGORY: Record<string, string> = {
           </div>
         }
       </main>
+      @if (confirmFinishOrderId() !== null) {
+        <app-confirmation-modal
+          title="KITCHEN_DISPLAY.FINISH_ORDER"
+          message="KITCHEN_DISPLAY.FINISH_ORDER_CONFIRM"
+          [messageParams]="{ id: confirmFinishOrderId() }"
+          confirmText="KITCHEN_DISPLAY.FINISH_ORDER"
+          cancelText="COMMON.NO"
+          confirmBtnClass="btn-primary"
+          (confirm)="confirmFinishOrder()"
+          (cancel)="cancelFinishOrder()"
+        ></app-confirmation-modal>
+      }
       @if (timerSettingsModalOpen()) {
         <div class="modal-backdrop" (click)="closeTimerSettingsModal()"></div>
         <div class="modal timer-settings-modal" role="dialog" aria-labelledby="timer-settings-title" appFocusFirstInput>
@@ -361,6 +403,21 @@ const VIEW_CATEGORY: Record<string, string> = {
       color: var(--color-text);
     }
     .station-filter-label { white-space: nowrap; }
+    .history-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      font-size: 0.9375rem;
+      font-weight: 500;
+      color: var(--color-primary);
+      background: transparent;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .history-btn:hover { background: var(--color-bg); }
     .station-filter-select {
       min-width: 160px;
       padding: var(--space-2) var(--space-3);
@@ -450,11 +507,30 @@ const VIEW_CATEGORY: Record<string, string> = {
       flex-direction: column;
       gap: var(--space-1);
     }
+    .order-id-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+    }
     .order-id {
       font-size: 1.5rem;
       font-weight: 700;
       color: var(--color-text);
     }
+    .finish-order-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: 4px var(--space-2);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: white;
+      background: var(--color-success);
+      border: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+    }
+    .finish-order-btn:hover { filter: brightness(0.92); }
     .order-table {
       font-size: 1.25rem;
       font-weight: 600;
@@ -720,6 +796,8 @@ export class KitchenDisplayComponent implements OnInit, AfterViewInit, OnDestroy
     orange_minutes: 10,
     red_minutes: 15,
   });
+  /** Order id pending confirmation for the "finish order" action, or null when closed. */
+  confirmFinishOrderId = signal<number | null>(null);
   timerSettingsModalOpen = signal(false);
   timerSettingsForm = signal<{ yellow_minutes: number; orange_minutes: number; red_minutes: number }>({
     yellow_minutes: 5,
@@ -1213,5 +1291,50 @@ export class KitchenDisplayComponent implements OnInit, AfterViewInit, OnDestroy
       next: () => this.loadOrders({ background: true }),
       error: () => this.loadOrders({ background: true }),
     });
+  }
+
+  /** Branded label for the order's origin (table name, or delivery channel for non-table orders). */
+  getOrderChannelLabel(order: Order): string {
+    if ((order.order_channel || '') === 'satisfecho_delivery') {
+      return this.translate.instant('ORDERS.CHANNEL_SATISFECHO_DELIVERY');
+    }
+    if ((order.order_channel || '') === 'marketplace' || !!order.delivery_integration_id) {
+      return this.translate.instant('ORDERS.CHANNEL_MARKETPLACE');
+    }
+    return order.table_name;
+  }
+
+  /** Ask for confirmation before finishing (delivering) every active item in the order. */
+  finishOrder(order: Order): void {
+    this.confirmFinishOrderId.set(order.id);
+  }
+
+  cancelFinishOrder(): void {
+    this.confirmFinishOrderId.set(null);
+  }
+
+  /** Marks every active item of the order as delivered, closing it out of the kitchen view. */
+  confirmFinishOrder(): void {
+    const orderId = this.confirmFinishOrderId();
+    this.confirmFinishOrderId.set(null);
+    if (orderId == null) return;
+
+    const fullOrder = this.orders().find((o) => o.id === orderId);
+    const activeItems = (fullOrder?.items ?? []).filter(
+      (i) => !i.removed_by_customer && i.id != null && i.status !== 'delivered' && i.status !== 'cancelled'
+    );
+    if (activeItems.length === 0) return;
+
+    let remaining = activeItems.length;
+    const done = () => {
+      remaining -= 1;
+      if (remaining === 0) this.loadOrders({ background: true });
+    };
+    for (const item of activeItems) {
+      this.api.updateOrderItemStatus(orderId, item.id!, 'delivered').subscribe({
+        next: done,
+        error: done,
+      });
+    }
   }
 }

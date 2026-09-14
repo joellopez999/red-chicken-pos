@@ -1241,7 +1241,10 @@
     "TIMER_BAR_HINT": "Wait time progress toward red threshold",
     "STATION": "Station",
     "ALL_STATIONS": "All stations",
-    "ITEM_COMMENT": "Comment"
+    "ITEM_COMMENT": "Comment",
+    "HISTORY": "History",
+    "FINISH_ORDER": "Finish order",
+    "FINISH_ORDER_CONFIRM": "Finish order #{{id}}? All its items will be marked as delivered."
   },
   "BAR_DISPLAY": {
     "TITLE": "Bar display"

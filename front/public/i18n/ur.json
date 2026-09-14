@@ -1079,7 +1079,10 @@
     "TIMER_BAR_HINT": "انتظار وقت progress toward red threshold",
     "STATION": "اسٹیشن",
     "ALL_STATIONS": "تمام اسٹیشن",
-    "ITEM_COMMENT": "تبصرہ"
+    "ITEM_COMMENT": "تبصرہ",
+    "HISTORY": "تاریخ",
+    "FINISH_ORDER": "آرڈر مکمل کریں",
+    "FINISH_ORDER_CONFIRM": "کیا آرڈر #{{id}} مکمل کریں؟ اس کی تمام اشیاء ڈیلیور کے طور پر نشان زد ہو جائیں گی۔"
   },
   "BAR_DISPLAY": {
     "TITLE": "بار ڈسپلے"

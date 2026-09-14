@@ -1066,6 +1066,12 @@ ModuleRegistry.registerModules([
                   </svg>
                 </button>
               </div>
+              <div class="modal-actions modal-actions-top">
+                <button type="button" class="btn btn-secondary" (click)="cancelCreateDeliveryModal()">{{ 'COMMON.CANCEL' | translate }}</button>
+                <button type="button" class="btn btn-primary" (click)="submitCreateDelivery()" [disabled]="creatingDelivery() || !deliveryFormAddress.trim() || deliveryDraftItems.length === 0">
+                  {{ creatingDelivery() ? ('COMMON.LOADING' | translate) : ('ORDERS.CREATE_DELIVERY' | translate) }}
+                </button>
+              </div>
               <div class="modal-body delivery-create-grid">
                 <div class="delivery-create-info">
                   <p class="modal-hint">{{ 'ORDERS.NEW_DELIVERY_HINT' | translate }}</p>
@@ -1162,12 +1168,6 @@ ModuleRegistry.registerModules([
                     </div>
                   }
                 </div>
-              </div>
-              <div class="modal-actions">
-                <button type="button" class="btn btn-secondary" (click)="cancelCreateDeliveryModal()">{{ 'COMMON.CANCEL' | translate }}</button>
-                <button type="button" class="btn btn-primary" (click)="submitCreateDelivery()" [disabled]="creatingDelivery() || !deliveryFormAddress.trim() || deliveryDraftItems.length === 0">
-                  {{ creatingDelivery() ? ('COMMON.LOADING' | translate) : ('ORDERS.CREATE_DELIVERY' | translate) }}
-                </button>
               </div>
             </div>
           </div>
@@ -2585,6 +2585,10 @@ ModuleRegistry.registerModules([
       flex: 0 1 auto;
       min-width: 6rem;
     }
+    .modal-actions-top {
+      border-top: none;
+      border-bottom: 1px solid var(--color-border);
+    }
 
     @media (max-width: 768px) {
       .mobile-header { display: flex; }
@@ -3126,6 +3130,9 @@ export class OrdersComponent implements OnInit, OnDestroy {
       const t = q.get('table');
       const id = t != null && t !== '' ? Number(t) : NaN;
       this.tableScopeId.set(Number.isFinite(id) && id > 0 ? id : null);
+      if (q.get('view') === 'history') {
+        this.viewMode.set('history');
+      }
     });
     this.loadTenantSettings();
     this.ensureDeliveryLookups();
