@@ -1063,12 +1063,15 @@ ModuleRegistry.registerModules([
 
                 <div class="form-group">
                   <label for="edit-billing-customer">{{ 'CUSTOMERS.SELECT_FOR_FACTURA' | translate }}</label>
-                  <select id="edit-billing-customer" class="form-select" [(ngModel)]="editOrderBillingId" name="editBillingCustomer">
-                    <option [ngValue]="null">{{ 'COMMON.NONE' | translate }}</option>
-                    @for (c of editOrderBillingCustomers(); track c.id) {
-                      <option [ngValue]="c.id">{{ c.company_name || c.name }}{{ c.tax_id ? ' (' + c.tax_id + ')' : '' }}</option>
-                    }
-                  </select>
+                  <div class="billing-customer-row">
+                    <select id="edit-billing-customer" class="form-select" [(ngModel)]="editOrderBillingId" name="editBillingCustomer">
+                      <option [ngValue]="null">{{ 'COMMON.NONE' | translate }}</option>
+                      @for (c of editOrderBillingCustomers(); track c.id) {
+                        <option [ngValue]="c.id">{{ c.company_name || c.name }}{{ c.tax_id ? ' (' + c.tax_id + ')' : '' }}</option>
+                      }
+                    </select>
+                    <button type="button" class="btn btn-secondary" (click)="openCustomerPicker()">{{ 'CUSTOMERS.SEARCH_OR_CREATE' | translate }}</button>
+                  </div>
                 </div>
               </div>
               <div class="modal-actions">
@@ -1086,6 +1089,87 @@ ModuleRegistry.registerModules([
                 }
                 @if (order.status !== 'paid' && order.status !== 'cancelled' && order.status !== 'completed' && canFinishOrder()) {
                   <button type="button" class="btn btn-success" (click)="markEditOrderFinish(order)">{{ 'ORDERS.FINISH_ORDER' | translate }}</button>
+                }
+              </div>
+            </div>
+          </div>
+        }
+
+        <!-- Search / Create billing customer (reachable from the order-edit modal) -->
+        @if (customerPickerOpen()) {
+          <div class="modal-overlay" (click)="closeCustomerPicker()">
+            <div class="modal" (click)="$event.stopPropagation()" appFocusFirstInput>
+              <div class="modal-header">
+                <h3>{{ 'CUSTOMERS.SEARCH_OR_CREATE' | translate }}</h3>
+                <button class="icon-btn" (click)="closeCustomerPicker()">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="modal-body">
+                @if (!customerPickerCreating()) {
+                  <div class="form-group">
+                    <input
+                      type="text"
+                      class="form-input"
+                      [(ngModel)]="customerPickerSearch"
+                      name="customerPickerSearch"
+                      (ngModelChange)="searchCustomerPicker($event)"
+                      [placeholder]="'CUSTOMERS.SEARCH_PLACEHOLDER' | translate"
+                      autocomplete="off"
+                    />
+                  </div>
+                  <div class="customer-picker-results">
+                    @for (c of customerPickerResults(); track c.id) {
+                      <button type="button" class="customer-picker-row" (click)="selectCustomerFromPicker(c)">
+                        <span class="customer-picker-name">{{ c.company_name || c.name }}</span>
+                        @if (c.tax_id) {
+                          <span class="customer-picker-tax">{{ c.tax_id }}</span>
+                        }
+                      </button>
+                    } @empty {
+                      <p class="hint">{{ 'CUSTOMERS.NO_RESULTS' | translate }}</p>
+                    }
+                  </div>
+                  <button type="button" class="btn btn-secondary" (click)="startCreateCustomerFromPicker()">
+                    {{ 'CUSTOMERS.CREATE_NEW' | translate }}
+                  </button>
+                } @else {
+                  <div class="form-group">
+                    <label for="cp-name">{{ 'CUSTOMERS.NAME' | translate }} *</label>
+                    <input type="text" id="cp-name" class="form-input" [(ngModel)]="customerPickerForm.name" name="cpName" />
+                  </div>
+                  <div class="form-group">
+                    <label for="cp-company">{{ 'CUSTOMERS.COMPANY' | translate }}</label>
+                    <input type="text" id="cp-company" class="form-input" [(ngModel)]="customerPickerForm.company_name" name="cpCompany" />
+                  </div>
+                  <div class="form-group">
+                    <label for="cp-tax">{{ 'CUSTOMERS.TAX_ID' | translate }}</label>
+                    <input type="text" id="cp-tax" class="form-input" [(ngModel)]="customerPickerForm.tax_id" name="cpTax" [placeholder]="'CUSTOMERS.TAX_ID_PLACEHOLDER' | translate" />
+                  </div>
+                  <div class="form-group">
+                    <label for="cp-address">{{ 'CUSTOMERS.ADDRESS' | translate }}</label>
+                    <input type="text" id="cp-address" class="form-input" [(ngModel)]="customerPickerForm.address" name="cpAddress" />
+                  </div>
+                  <div class="form-group">
+                    <label for="cp-email">{{ 'CUSTOMERS.EMAIL' | translate }}</label>
+                    <input type="email" id="cp-email" class="form-input" [(ngModel)]="customerPickerForm.email" name="cpEmail" />
+                  </div>
+                  <div class="form-group">
+                    <label for="cp-phone">{{ 'CUSTOMERS.PHONE' | translate }}</label>
+                    <input type="text" id="cp-phone" class="form-input" [(ngModel)]="customerPickerForm.phone" name="cpPhone" />
+                  </div>
+                }
+              </div>
+              <div class="modal-actions">
+                @if (customerPickerCreating()) {
+                  <button type="button" class="btn btn-secondary" (click)="customerPickerCreating.set(false)">{{ 'COMMON.CANCEL' | translate }}</button>
+                  <button type="button" class="btn btn-primary" (click)="submitCreateCustomerFromPicker()" [disabled]="!customerPickerForm.name.trim() || savingCustomerPicker()">
+                    {{ savingCustomerPicker() ? ('COMMON.LOADING' | translate) : ('COMMON.SAVE' | translate) }}
+                  </button>
+                } @else {
+                  <button type="button" class="btn btn-secondary" (click)="closeCustomerPicker()">{{ 'COMMON.CLOSE' | translate }}</button>
                 }
               </div>
             </div>
@@ -2636,6 +2720,35 @@ ModuleRegistry.registerModules([
       background: var(--color-surface);
       color: var(--color-text);
     }
+    .billing-customer-row {
+      display: flex;
+      gap: var(--space-2);
+    }
+    .billing-customer-row .form-select { flex: 1; min-width: 0; }
+    .customer-picker-results {
+      max-height: 260px;
+      overflow-y: auto;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-3);
+    }
+    .customer-picker-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      padding: var(--space-3);
+      border: none;
+      border-bottom: 1px solid var(--color-border);
+      background: none;
+      text-align: left;
+      cursor: pointer;
+      font-size: 0.9375rem;
+      color: var(--color-text);
+    }
+    .customer-picker-row:last-child { border-bottom: none; }
+    .customer-picker-row:hover { background: var(--color-bg); }
+    .customer-picker-tax { color: var(--color-text-muted); font-size: 0.8125rem; }
 
     .form-select:focus {
       outline: none;
@@ -2973,6 +3086,20 @@ export class OrdersComponent implements OnInit, OnDestroy {
   editOrderTenantProducts = signal<TenantProduct[]>([]);
   editOrderBillingCustomers = signal<BillingCustomer[]>([]);
   editOrderBillingId: number | null = null;
+
+  customerPickerOpen = signal(false);
+  customerPickerSearch = '';
+  customerPickerResults = signal<BillingCustomer[]>([]);
+  customerPickerCreating = signal(false);
+  savingCustomerPicker = signal(false);
+  customerPickerForm = {
+    name: '',
+    company_name: '',
+    tax_id: '',
+    address: '',
+    email: '',
+    phone: '',
+  };
   addItemProductId: number | null = null;
   addItemQuantity = 1;
   addItemNotes = '';
@@ -3739,6 +3866,63 @@ export class OrdersComponent implements OnInit, OnDestroy {
         this.showToast(this.translate.instant('ORDERS.ITEM_UPDATED'), 'success');
       },
       error: () => this.showToast(this.translate.instant('ORDERS.FAILED_TO_UPDATE_ITEM'), 'error')
+    });
+  }
+
+  openCustomerPicker(): void {
+    this.customerPickerSearch = '';
+    this.customerPickerCreating.set(false);
+    this.customerPickerResults.set(this.editOrderBillingCustomers());
+    this.customerPickerOpen.set(true);
+  }
+
+  closeCustomerPicker(): void {
+    this.customerPickerOpen.set(false);
+    this.customerPickerCreating.set(false);
+  }
+
+  searchCustomerPicker(term: string): void {
+    this.api.getBillingCustomers(term.trim() || undefined).subscribe({
+      next: (list) => this.customerPickerResults.set(list),
+      error: () => this.customerPickerResults.set([]),
+    });
+  }
+
+  selectCustomerFromPicker(customer: BillingCustomer): void {
+    this.editOrderBillingId = customer.id;
+    if (!this.editOrderBillingCustomers().some(c => c.id === customer.id)) {
+      this.editOrderBillingCustomers.update(list => [...list, customer]);
+    }
+    this.closeCustomerPicker();
+    this.saveEditOrderBilling();
+  }
+
+  startCreateCustomerFromPicker(): void {
+    this.customerPickerForm = { name: this.customerPickerSearch.trim(), company_name: '', tax_id: '', address: '', email: '', phone: '' };
+    this.customerPickerCreating.set(true);
+  }
+
+  submitCreateCustomerFromPicker(): void {
+    const name = this.customerPickerForm.name.trim();
+    if (!name) return;
+    this.savingCustomerPicker.set(true);
+    this.api.createBillingCustomer({
+      name,
+      company_name: this.customerPickerForm.company_name.trim() || undefined,
+      tax_id: this.customerPickerForm.tax_id.trim() || undefined,
+      address: this.customerPickerForm.address.trim() || undefined,
+      email: this.customerPickerForm.email.trim() || undefined,
+      phone: this.customerPickerForm.phone.trim() || undefined,
+    }).subscribe({
+      next: (customer) => {
+        this.savingCustomerPicker.set(false);
+        this.showToast(this.translate.instant('CUSTOMERS.CREATED'), 'success');
+        this.selectCustomerFromPicker(customer);
+      },
+      error: () => {
+        this.savingCustomerPicker.set(false);
+        this.showToast(this.translate.instant('CUSTOMERS.CREATE_FAILED'), 'error');
+      },
     });
   }
 

@@ -1209,7 +1209,12 @@
     "DELETE_CONFIRM": "Delete {{name}}? Orders already linked will keep the saved data.",
     "PRINT_FACTURA": "Print invoice",
     "SELECT_FOR_FACTURA": "Select customer for invoice",
-    "BILL_TO": "Bill to"
+    "BILL_TO": "Bill to",
+    "SEARCH_OR_CREATE": "Search / create customer",
+    "NO_RESULTS": "No customers found",
+    "CREATE_NEW": "+ Create new customer",
+    "CREATED": "Customer created",
+    "CREATE_FAILED": "Could not create customer"
   },
   "ORDER_STATUS": {
     "pending": "Pending",

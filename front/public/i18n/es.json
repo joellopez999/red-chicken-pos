@@ -1053,7 +1053,12 @@
     "DELETE_CONFIRM": "¿Eliminar {{name}}? Los pedidos ya vinculados conservan los datos.",
     "PRINT_FACTURA": "Imprimir Factura",
     "SELECT_FOR_FACTURA": "Cliente para la factura",
-    "BILL_TO": "Facturar a"
+    "BILL_TO": "Facturar a",
+    "SEARCH_OR_CREATE": "Buscar / crear cliente",
+    "NO_RESULTS": "No se encontraron clientes",
+    "CREATE_NEW": "+ Crear nuevo cliente",
+    "CREATED": "Cliente creado",
+    "CREATE_FAILED": "No se pudo crear el cliente"
   },
   "ORDER_STATUS": {
     "pending": "Pendiente",
