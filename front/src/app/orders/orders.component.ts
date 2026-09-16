@@ -147,6 +147,14 @@ ModuleRegistry.registerModules([
               <div class="order-grid">
                 @for (order of activeOrders(); track order.id) {
                   <div class="order-card" [id]="'order-card-' + order.id" [class]="'status-' + order.status + (orderCardHasOpenStatusDropdown(order.id) ? ' status-dropdown-open' : '')">
+                    @if (isSatisfechoDelivery(order) && canUpdateStatus() && order.status !== 'cancelled') {
+                      <button type="button" class="btn-edit-corner" (click)="openEditDeliveryModal(order)" [title]="'ORDERS.EDIT_DELIVERY' | translate">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                          <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                      </button>
+                    }
                     @if (canUpdateStatus() && order.status !== 'cancelled' && order.status !== 'paid' && order.status !== 'completed') {
                       <button type="button" class="btn-cancel-corner" (click)="cancelOrder(order)" [title]="'ORDERS.CANCEL_ORDER' | translate">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -329,9 +337,9 @@ ModuleRegistry.registerModules([
                           </svg>
                           {{ 'COMMON.EDIT' | translate }}
                         </button>
-                        @if (isSatisfechoDelivery(order) && canUpdateStatus() && order.status !== 'cancelled') {
-                          <button type="button" class="btn btn-secondary" (click)="openEditDeliveryModal(order)">
-                            {{ 'ORDERS.EDIT_DELIVERY' | translate }}
+                        @if (sriInvoicingEnabled() && order.status !== 'cancelled') {
+                          <button type="button" class="btn btn-secondary" (click)="issueSriInvoiceForOrder(order)" [disabled]="issuingSriInvoice()">
+                            {{ issuingSriInvoice() ? ('ORDERS.SRI_ISSUING' | translate) : ('ORDERS.INVOICE_SHORT' | translate) }}
                           </button>
                         }
                         @if (order.status !== 'paid' && order.status !== 'cancelled' && canMarkPaid()) {
@@ -493,6 +501,14 @@ ModuleRegistry.registerModules([
                 <div class="order-grid">
                   @for (order of notPaidOrders(); track order.id) {
                     <div class="order-card" [id]="'order-card-' + order.id" [class]="'status-' + order.status + (orderCardHasOpenStatusDropdown(order.id) ? ' status-dropdown-open' : '')">
+                      @if (isSatisfechoDelivery(order) && canUpdateStatus() && order.status !== 'cancelled') {
+                        <button type="button" class="btn-edit-corner" (click)="openEditDeliveryModal(order)" [title]="'ORDERS.EDIT_DELIVERY' | translate">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                          </svg>
+                        </button>
+                      }
                       @if (canUpdateStatus() && order.status !== 'cancelled' && order.status !== 'paid' && order.status !== 'completed') {
                         <button type="button" class="btn-cancel-corner" (click)="cancelOrder(order)" [title]="'ORDERS.CANCEL_ORDER' | translate">
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -671,9 +687,9 @@ ModuleRegistry.registerModules([
                             </svg>
                             {{ 'COMMON.EDIT' | translate }}
                           </button>
-                          @if (isSatisfechoDelivery(order) && canUpdateStatus() && order.status !== 'cancelled') {
-                            <button type="button" class="btn btn-secondary" (click)="openEditDeliveryModal(order)">
-                              {{ 'ORDERS.EDIT_DELIVERY' | translate }}
+                          @if (sriInvoicingEnabled() && order.status !== 'cancelled') {
+                            <button type="button" class="btn btn-secondary" (click)="issueSriInvoiceForOrder(order)" [disabled]="issuingSriInvoice()">
+                              {{ issuingSriInvoice() ? ('ORDERS.SRI_ISSUING' | translate) : ('ORDERS.INVOICE_SHORT' | translate) }}
                             </button>
                           }
                           @if (order.status !== 'paid' && order.status !== 'cancelled' && canMarkPaid()) {
@@ -835,6 +851,14 @@ ModuleRegistry.registerModules([
                 <div class="order-grid">
                   @for (order of deliveryOrders(); track order.id) {
                     <div class="order-card" [id]="'order-card-' + order.id" [class]="'status-' + order.status + (orderCardHasOpenStatusDropdown(order.id) ? ' status-dropdown-open' : '')">
+                      @if (isSatisfechoDelivery(order) && canUpdateStatus() && order.status !== 'cancelled') {
+                        <button type="button" class="btn-edit-corner" (click)="openEditDeliveryModal(order)" [title]="'ORDERS.EDIT_DELIVERY' | translate">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                          </svg>
+                        </button>
+                      }
                       @if (canUpdateStatus() && order.status !== 'cancelled' && order.status !== 'paid' && order.status !== 'completed') {
                         <button type="button" class="btn-cancel-corner" (click)="cancelOrder(order)" [title]="'ORDERS.CANCEL_ORDER' | translate">
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -908,9 +932,9 @@ ModuleRegistry.registerModules([
                           <button type="button" class="btn btn-edit-order" (click)="openOrderEdit(order)" [title]="'ORDERS.EDIT_ORDER' | translate">
                             {{ 'COMMON.EDIT' | translate }}
                           </button>
-                          @if (isSatisfechoDelivery(order) && canUpdateStatus() && order.status !== 'cancelled') {
-                            <button type="button" class="btn btn-secondary" (click)="openEditDeliveryModal(order)">
-                              {{ 'ORDERS.EDIT_DELIVERY' | translate }}
+                          @if (sriInvoicingEnabled() && order.status !== 'cancelled') {
+                            <button type="button" class="btn btn-secondary" (click)="issueSriInvoiceForOrder(order)" [disabled]="issuingSriInvoice()">
+                              {{ issuingSriInvoice() ? ('ORDERS.SRI_ISSUING' | translate) : ('ORDERS.INVOICE_SHORT' | translate) }}
                             </button>
                           }
                           @if (order.status !== 'paid' && order.status !== 'cancelled' && canMarkPaid()) {
@@ -2017,7 +2041,7 @@ ModuleRegistry.registerModules([
       align-items: center;
       gap: var(--space-3);
       padding: var(--space-4);
-      padding-right: 44px; /* keep header text clear of .btn-cancel-corner */
+      padding-right: 80px; /* keep header text clear of .btn-cancel-corner + .btn-edit-corner */
       border-bottom: 1px solid var(--color-border);
       margin-bottom: var(--space-3);
     }
@@ -2063,6 +2087,18 @@ ModuleRegistry.registerModules([
       z-index: 2;
     }
     .btn-cancel-corner:hover { background: rgba(220, 38, 38, 0.08); color: var(--color-error, #dc2626); border-color: rgba(220, 38, 38, 0.3); }
+    .btn-edit-corner {
+      position: absolute;
+      top: var(--space-2);
+      right: calc(var(--space-2) + 36px);
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px; padding: 0;
+      border-radius: 8px;
+      border: 1px solid transparent; background: transparent;
+      color: var(--color-text-muted); cursor: pointer; transition: all 0.15s;
+      z-index: 2;
+    }
+    .btn-edit-corner:hover { background: var(--color-bg); color: var(--color-text); border-color: var(--color-border); }
     .dropdown-item.danger { color: var(--color-error, #dc2626); }
     .order-id { font-weight: 600; color: var(--color-text); }
     .order-table { color: var(--color-text-muted); font-size: 0.875rem; }
@@ -4720,9 +4756,13 @@ export class OrdersComponent implements OnInit, OnDestroy {
     const customer = this.editOrderBillingId != null
       ? this.editOrderBillingCustomers().find(c => c.id === this.editOrderBillingId)
       : undefined;
-    const customerLabel = customer
-      ? (customer.company_name || customer.name)
-      : this.translate.instant('CUSTOMERS.CONSUMIDOR_FINAL');
+    this.issueSriInvoiceForOrder(order, customer ? (customer.company_name || customer.name) : undefined);
+  }
+
+  issueSriInvoiceForOrder(order: Order, customerLabelOverride?: string): void {
+    const customerLabel = customerLabelOverride
+      ?? (order.billing_customer ? (order.billing_customer.company_name || order.billing_customer.name) : undefined)
+      ?? this.translate.instant('CUSTOMERS.CONSUMIDOR_FINAL');
     this.openConfirmModal(
       this.translate.instant('ORDERS.SRI_ISSUE_CONFIRM', {
         customer: customerLabel,

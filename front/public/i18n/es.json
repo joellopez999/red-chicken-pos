@@ -907,6 +907,7 @@
     "CANCEL_ORDER_DONE": "Pedido cancelado",
     "CANCEL_ORDER_FAILED": "Error al cancelar el pedido",
     "SRI_ISSUE_INVOICE": "Emitir factura SRI",
+    "INVOICE_SHORT": "Facturar",
     "SRI_ISSUING": "Enviando al SRI...",
     "SRI_AUTHORIZED": "Factura autorizada por el SRI",
     "SRI_REJECTED": "El SRI rechazó la factura",
