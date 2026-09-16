@@ -66,6 +66,11 @@ ModuleRegistry.registerModules([
                   {{ 'ORDERS.NEW_DELIVERY_ORDER' | translate }}
                 </button>
               }
+              @if (canUpdateStatus() && sriInvoicingEnabled()) {
+                <button type="button" class="btn btn-secondary" (click)="openManualInvoiceModal()">
+                  {{ 'ORDERS.NEW_MANUAL_INVOICE' | translate }}
+                </button>
+              }
               <button class="btn btn-secondary" (click)="loadOrders()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="23,4 23,10 17,10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
@@ -1171,6 +1176,123 @@ ModuleRegistry.registerModules([
                 } @else {
                   <button type="button" class="btn btn-secondary" (click)="closeCustomerPicker()">{{ 'COMMON.CLOSE' | translate }}</button>
                 }
+              </div>
+            </div>
+          </div>
+        }
+
+        <!-- Manual Invoice Modal (staff-entered sale created only to issue a fiscal invoice) -->
+        @if (manualInvoiceOpen()) {
+          <div class="modal-overlay">
+            <div class="modal modal-delivery-create" (click)="$event.stopPropagation()" appFocusFirstInput>
+              <div class="modal-header">
+                <h3>{{ 'ORDERS.NEW_MANUAL_INVOICE' | translate }}</h3>
+                <button class="icon-btn" (click)="closeManualInvoiceModal()">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="modal-actions modal-actions-top">
+                <button type="button" class="btn btn-secondary" (click)="closeManualInvoiceModal()">{{ 'COMMON.CANCEL' | translate }}</button>
+                <button type="button" class="btn btn-primary" (click)="confirmSubmitManualInvoice()" [disabled]="creatingManualInvoice() || manualInvoiceLines.length === 0">
+                  {{ creatingManualInvoice() ? ('COMMON.LOADING' | translate) : ('ORDERS.SRI_ISSUE_INVOICE' | translate) }}
+                </button>
+              </div>
+              <div class="modal-body delivery-create-grid">
+                <div class="delivery-create-info">
+                  <p class="modal-hint">{{ 'ORDERS.MANUAL_INVOICE_HINT' | translate }}</p>
+                  <div class="form-group">
+                    <label>{{ 'CUSTOMERS.SELECT_FOR_FACTURA' | translate }}</label>
+                    @if (manualInvoiceBillingCustomer) {
+                      <div class="customer-picker-row" style="cursor:default;">
+                        <span class="customer-picker-name">{{ manualInvoiceBillingCustomer.company_name || manualInvoiceBillingCustomer.name }}</span>
+                        @if (manualInvoiceBillingCustomer.tax_id) {
+                          <span class="customer-picker-tax">{{ manualInvoiceBillingCustomer.tax_id }}</span>
+                        }
+                        <button type="button" class="btn-remove-row" (click)="manualInvoiceBillingCustomer = null" [title]="'COMMON.CLEAR' | translate">✕</button>
+                      </div>
+                    } @else {
+                      <div class="billing-customer-row">
+                        <input
+                          type="text"
+                          class="form-input"
+                          [(ngModel)]="manualInvoiceCustomerName"
+                          name="manualInvoiceCustomerName"
+                          [placeholder]="'CUSTOMERS.CONSUMIDOR_FINAL' | translate"
+                        />
+                        <button type="button" class="btn btn-secondary" (click)="openCustomerPicker('manualInvoice')">{{ 'CUSTOMERS.SEARCH_OR_CREATE' | translate }}</button>
+                      </div>
+                    }
+                  </div>
+                </div>
+
+                <div class="delivery-create-items">
+                  <div class="edit-order-label">{{ 'ORDERS.ITEMS' | translate }} *</div>
+                  <div class="delivery-items-add-row">
+                    <select class="form-select" [(ngModel)]="manualInvoiceAddProductId" name="manualInvoiceAddProduct">
+                      <option [ngValue]="null">{{ 'COMMON.SELECT' | translate }}</option>
+                      @for (p of deliveryProducts(); track p.id) {
+                        <option [ngValue]="p.id">{{ p.name }} — {{ formatPrice(p.price_cents) }}</option>
+                      }
+                    </select>
+                    <input type="number" class="quantity-input" [(ngModel)]="manualInvoiceAddQuantity" min="1" name="manualInvoiceAddQty" />
+                    <button type="button" class="btn btn-secondary" (click)="addManualInvoiceProductLine()" [disabled]="!manualInvoiceAddProductId || manualInvoiceAddQuantity < 1">
+                      {{ 'COMMON.ADD' | translate }}
+                    </button>
+                  </div>
+                  <div class="delivery-items-add-row">
+                    <input type="text" class="form-input" [(ngModel)]="manualInvoiceCustomDescription" name="manualInvoiceCustomDesc" [placeholder]="'ORDERS.CUSTOM_LINE_DESCRIPTION' | translate" />
+                    <input type="number" class="quantity-input" [(ngModel)]="manualInvoiceCustomQuantity" min="1" name="manualInvoiceCustomQty" />
+                    <input type="number" class="form-input" style="max-width:100px;" [(ngModel)]="manualInvoiceCustomAmount" min="0" step="0.01" name="manualInvoiceCustomAmount" [placeholder]="'ORDERS.CUSTOM_LINE_AMOUNT' | translate" />
+                    <button type="button" class="btn btn-secondary" (click)="addManualInvoiceCustomLine()" [disabled]="!manualInvoiceCustomDescription.trim() || !manualInvoiceCustomAmount">
+                      {{ 'ORDERS.ADD_CUSTOM_LINE' | translate }}
+                    </button>
+                  </div>
+
+                  <div class="delivery-items-table-wrap">
+                    <table class="delivery-items-table">
+                      <thead>
+                        <tr>
+                          <th class="col-item">{{ 'ORDERS.GRID.ITEMS' | translate }}</th>
+                          <th class="col-qty">{{ 'ORDERS.QUANTITY' | translate }}</th>
+                          <th class="col-price">{{ 'ORDERS.TOTAL' | translate }}</th>
+                          <th class="col-actions"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (line of manualInvoiceLines; track $index; let i = $index) {
+                          <tr>
+                            <td class="col-item">{{ line.name }}</td>
+                            <td class="col-qty">{{ line.quantity }}</td>
+                            <td class="col-price">{{ formatPrice(line.unit_amount_cents * line.quantity) }}</td>
+                            <td class="col-actions">
+                              <button type="button" class="btn-remove-row" (click)="removeManualInvoiceLine(i)" [title]="'ORDERS.REMOVE_ITEM' | translate">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                  <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                                  <line x1="10" y1="11" x2="10" y2="17"/>
+                                  <line x1="14" y1="11" x2="14" y2="17"/>
+                                </svg>
+                              </button>
+                            </td>
+                          </tr>
+                        } @empty {
+                          <tr>
+                            <td colspan="4" class="delivery-items-empty">{{ 'ORDERS.NO_ITEMS_ADDED' | translate }}</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+
+                  @if (manualInvoiceLines.length > 0) {
+                    <div class="delivery-items-totals">
+                      <div class="payment-amount-line" style="font-weight: 700; margin-bottom: 0;">
+                        {{ 'ORDERS.TOTAL' | translate }}: {{ formatPrice(manualInvoiceTotalCents()) }}
+                      </div>
+                    </div>
+                  }
+                </div>
               </div>
             </div>
           </div>
@@ -3100,6 +3222,23 @@ export class OrdersComponent implements OnInit, OnDestroy {
     email: '',
     phone: '',
   };
+  manualInvoiceOpen = signal(false);
+  creatingManualInvoice = signal(false);
+  manualInvoiceBillingCustomer: BillingCustomer | null = null;
+  manualInvoiceCustomerName = '';
+  manualInvoiceLines: Array<{
+    type: 'product' | 'custom';
+    product_id: number | null;
+    name: string;
+    quantity: number;
+    unit_amount_cents: number;
+  }> = [];
+  manualInvoiceAddProductId: number | null = null;
+  manualInvoiceAddQuantity = 1;
+  manualInvoiceCustomDescription = '';
+  manualInvoiceCustomAmount = '';
+  manualInvoiceCustomQuantity = 1;
+
   addItemProductId: number | null = null;
   addItemQuantity = 1;
   addItemNotes = '';
@@ -3265,6 +3404,33 @@ export class OrdersComponent implements OnInit, OnDestroy {
         },
       },
       {
+        field: 'sri_comprobante',
+        headerName: this.translate.instant('ORDERS.GRID.INVOICED'),
+        width: 130,
+        sortable: false,
+        cellRenderer: (params: ICellRendererParams) => {
+          const estado = params.value?.estado;
+          if (!estado) {
+            return `<span style="color:#9CA3AF;font-size:0.8125rem;">${this.translate.instant('ORDERS.GRID.NOT_INVOICED')}</span>`;
+          }
+          const colorMap: Record<string, string> = {
+            AUT: '#16A34A', NAT: '#DC2626', DEVUELTA: '#DC2626', RECIBIDA: '#D97706', PPR: '#D97706',
+          };
+          const color = colorMap[estado] || '#78716C';
+          const label = this.translate.instant(`ORDERS.SRI_ESTADO.${estado}`) || estado;
+          return `<span style="
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            background: ${color}20;
+            color: ${color};
+            line-height: 1.4;
+          ">${label}</span>`;
+        },
+      },
+      {
         field: 'created_at',
         headerName: this.translate.instant('ORDERS.GRID.DATE'),
         width: 220,
@@ -3316,6 +3482,21 @@ export class OrdersComponent implements OnInit, OnDestroy {
           const icon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/></svg>';
           const safeTitle = (title || '').replace(/"/g, '&quot;');
           return `<button type="button" class="btn-factura-row" data-order-id="${id}" title="${safeTitle}" style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;padding:0;cursor:pointer;background:#fff;color:#333;border:1px solid #ddd;border-radius:8px;">${icon}</button>`;
+        },
+      },
+      {
+        headerName: '',
+        width: 56,
+        sortable: false,
+        filter: false,
+        cellRenderer: (params: ICellRendererParams) => {
+          const id = params.data?.id;
+          const estado = params.data?.sri_comprobante?.estado;
+          if (id == null || estado !== 'AUT') return '';
+          const title = this.translate.instant('ORDERS.SRI_DOWNLOAD_RIDE');
+          const safeTitle = (title || '').replace(/"/g, '&quot;');
+          const icon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+          return `<button type="button" class="btn-ride-download-row" data-order-id="${id}" title="${safeTitle}" style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;padding:0;cursor:pointer;background:#fff;color:#166534;border:1px solid #ddd;border-radius:8px;">${icon}</button>`;
         },
       },
       ...(this.canDeleteOrder() ? [{
@@ -3568,6 +3749,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   orderChannelBadgeKey(order: Order): string | null {
     if (this.isSatisfechoDelivery(order)) return 'ORDERS.CHANNEL_SATISFECHO_DELIVERY';
     if (this.isMarketplaceDelivery(order)) return 'ORDERS.CHANNEL_MARKETPLACE';
+    if (order.order_channel === 'manual_invoice') return 'ORDERS.CHANNEL_MANUAL_INVOICE';
     return null;
   }
 
@@ -3869,10 +4051,13 @@ export class OrdersComponent implements OnInit, OnDestroy {
     });
   }
 
-  openCustomerPicker(): void {
+  customerPickerTarget: 'editOrder' | 'manualInvoice' = 'editOrder';
+
+  openCustomerPicker(target: 'editOrder' | 'manualInvoice' = 'editOrder'): void {
+    this.customerPickerTarget = target;
     this.customerPickerSearch = '';
     this.customerPickerCreating.set(false);
-    this.customerPickerResults.set(this.editOrderBillingCustomers());
+    this.customerPickerResults.set(target === 'editOrder' ? this.editOrderBillingCustomers() : []);
     this.customerPickerOpen.set(true);
   }
 
@@ -3889,6 +4074,11 @@ export class OrdersComponent implements OnInit, OnDestroy {
   }
 
   selectCustomerFromPicker(customer: BillingCustomer): void {
+    if (this.customerPickerTarget === 'manualInvoice') {
+      this.manualInvoiceBillingCustomer = customer;
+      this.closeCustomerPicker();
+      return;
+    }
     this.editOrderBillingId = customer.id;
     if (!this.editOrderBillingCustomers().some(c => c.id === customer.id)) {
       this.editOrderBillingCustomers.update(list => [...list, customer]);
@@ -3922,6 +4112,113 @@ export class OrdersComponent implements OnInit, OnDestroy {
       error: () => {
         this.savingCustomerPicker.set(false);
         this.showToast(this.translate.instant('CUSTOMERS.CREATE_FAILED'), 'error');
+      },
+    });
+  }
+
+  openManualInvoiceModal(): void {
+    this.ensureDeliveryLookups();
+    this.manualInvoiceBillingCustomer = null;
+    this.manualInvoiceCustomerName = '';
+    this.manualInvoiceLines = [];
+    this.manualInvoiceAddProductId = null;
+    this.manualInvoiceAddQuantity = 1;
+    this.manualInvoiceCustomDescription = '';
+    this.manualInvoiceCustomAmount = '';
+    this.manualInvoiceCustomQuantity = 1;
+    this.manualInvoiceOpen.set(true);
+  }
+
+  closeManualInvoiceModal(): void {
+    this.manualInvoiceOpen.set(false);
+  }
+
+  addManualInvoiceProductLine(): void {
+    const product = this.deliveryProducts().find(p => p.id === this.manualInvoiceAddProductId);
+    if (!product || this.manualInvoiceAddQuantity < 1) return;
+    this.manualInvoiceLines.push({
+      type: 'product',
+      product_id: product.id ?? null,
+      name: product.name,
+      quantity: this.manualInvoiceAddQuantity,
+      unit_amount_cents: product.price_cents,
+    });
+    this.manualInvoiceAddProductId = null;
+    this.manualInvoiceAddQuantity = 1;
+  }
+
+  addManualInvoiceCustomLine(): void {
+    const description = this.manualInvoiceCustomDescription.trim();
+    const amount = Math.round(parseFloat(this.manualInvoiceCustomAmount) * 100);
+    if (!description || !amount || amount <= 0 || this.manualInvoiceCustomQuantity < 1) return;
+    this.manualInvoiceLines.push({
+      type: 'custom',
+      product_id: null,
+      name: description,
+      quantity: this.manualInvoiceCustomQuantity,
+      unit_amount_cents: amount,
+    });
+    this.manualInvoiceCustomDescription = '';
+    this.manualInvoiceCustomAmount = '';
+    this.manualInvoiceCustomQuantity = 1;
+  }
+
+  removeManualInvoiceLine(index: number): void {
+    this.manualInvoiceLines.splice(index, 1);
+  }
+
+  manualInvoiceTotalCents(): number {
+    return this.manualInvoiceLines.reduce((sum, l) => sum + l.unit_amount_cents * l.quantity, 0);
+  }
+
+  manualInvoiceCustomerLabel(): string {
+    if (this.manualInvoiceBillingCustomer) {
+      return this.manualInvoiceBillingCustomer.company_name || this.manualInvoiceBillingCustomer.name;
+    }
+    return this.manualInvoiceCustomerName.trim() || this.translate.instant('CUSTOMERS.CONSUMIDOR_FINAL');
+  }
+
+  confirmSubmitManualInvoice(): void {
+    if (this.manualInvoiceLines.length === 0) return;
+    const total = this.formatPrice(this.manualInvoiceTotalCents());
+    const customer = this.manualInvoiceCustomerLabel();
+    this.openConfirmModal(
+      this.translate.instant('ORDERS.SRI_ISSUE_CONFIRM', { customer, total }),
+      () => this.submitManualInvoice(),
+      { confirmText: this.translate.instant('ORDERS.SRI_ISSUE_INVOICE') }
+    );
+  }
+
+  private submitManualInvoice(): void {
+    this.creatingManualInvoice.set(true);
+    this.api.createManualInvoiceOrder({
+      billing_customer_id: this.manualInvoiceBillingCustomer?.id ?? null,
+      customer_name: this.manualInvoiceBillingCustomer ? null : (this.manualInvoiceCustomerName.trim() || null),
+      lines: this.manualInvoiceLines.map(l => ({
+        type: l.type,
+        product_id: l.type === 'product' ? l.product_id : null,
+        description: l.type === 'custom' ? l.name : null,
+        quantity: l.quantity,
+        amount_cents: l.type === 'custom' ? l.unit_amount_cents : null,
+      })),
+    }).subscribe({
+      next: (order) => {
+        this.closeManualInvoiceModal();
+        this.loadOrders();
+        this.issuingSriInvoice.set(true);
+        this.api.issueOrderSriInvoice(order.id).subscribe({
+          next: (comp) => this.pollSriInvoiceStatus(order.id, comp),
+          error: (err: { error?: { detail?: unknown } }) => {
+            this.creatingManualInvoice.set(false);
+            this.issuingSriInvoice.set(false);
+            this.showToast(this.fiscalIssueErrorMessage(err), 'error');
+          },
+        });
+        this.creatingManualInvoice.set(false);
+      },
+      error: (err: { error?: { detail?: unknown } }) => {
+        this.creatingManualInvoice.set(false);
+        this.showToast(this.fiscalIssueErrorMessage(err), 'error');
       },
     });
   }
@@ -4338,6 +4635,12 @@ export class OrdersComponent implements OnInit, OnDestroy {
     const facturaBtn = target.closest('.btn-factura-row');
     const editBtn = target.closest('.btn-edit-order-row');
     const deleteBtn = target.closest('.btn-delete-order-row');
+    const rideBtn = target.closest('.btn-ride-download-row');
+    if (rideBtn) {
+      const id = +(rideBtn.getAttribute('data-order-id') || 0);
+      window.open(this.api.sriInvoiceRideUrl(id), '_blank');
+      return;
+    }
     if (editBtn) {
       const id = +(editBtn.getAttribute('data-order-id') || 0);
       const order = this.orders().find(o => o.id === id);
@@ -4414,14 +4717,29 @@ export class OrdersComponent implements OnInit, OnDestroy {
   issueSriInvoiceForEditOrder(): void {
     const order = this.editOrder();
     if (!order) return;
-    this.issuingSriInvoice.set(true);
-    this.api.issueOrderSriInvoice(order.id).subscribe({
-      next: (comp) => this.pollSriInvoiceStatus(order.id, comp),
-      error: (err: { error?: { detail?: unknown } }) => {
-        this.issuingSriInvoice.set(false);
-        this.showToast(this.fiscalIssueErrorMessage(err), 'error');
+    const customer = this.editOrderBillingId != null
+      ? this.editOrderBillingCustomers().find(c => c.id === this.editOrderBillingId)
+      : undefined;
+    const customerLabel = customer
+      ? (customer.company_name || customer.name)
+      : this.translate.instant('CUSTOMERS.CONSUMIDOR_FINAL');
+    this.openConfirmModal(
+      this.translate.instant('ORDERS.SRI_ISSUE_CONFIRM', {
+        customer: customerLabel,
+        total: this.formatPrice(order.total_cents),
+      }),
+      () => {
+        this.issuingSriInvoice.set(true);
+        this.api.issueOrderSriInvoice(order.id).subscribe({
+          next: (comp) => this.pollSriInvoiceStatus(order.id, comp),
+          error: (err: { error?: { detail?: unknown } }) => {
+            this.issuingSriInvoice.set(false);
+            this.showToast(this.fiscalIssueErrorMessage(err), 'error');
+          },
+        });
       },
-    });
+      { confirmText: this.translate.instant('ORDERS.SRI_ISSUE_INVOICE') }
+    );
   }
 
   private pollSriInvoiceStatus(orderId: number, comp: SriComprobantePublic, attempt = 0): void {

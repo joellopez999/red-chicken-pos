@@ -7,6 +7,7 @@
     "CANCEL": "Cancel",
     "DISCARD": "Discard",
     "DELETE": "Delete",
+    "CLEAR": "Clear",
     "EDIT": "Edit",
     "ADD": "Add",
     "CLOSE": "Close",
@@ -1066,6 +1067,20 @@
     "SRI_AUTHORIZED": "Invoice authorized by SRI",
     "SRI_REJECTED": "SRI rejected the invoice",
     "SRI_STILL_PROCESSING": "SRI is still processing the authorization; check back shortly",
+    "SRI_ISSUE_CONFIRM": "Send this invoice to the SRI for {{customer}}, total {{total}}? This cannot be undone once sent.",
+    "SRI_DOWNLOAD_RIDE": "Download invoice (RIDE)",
+    "SRI_ESTADO": {
+      "AUT": "Invoiced",
+      "NAT": "Rejected",
+      "DEVUELTA": "Rejected",
+      "RECIBIDA": "Processing",
+      "PPR": "Processing"
+    },
+    "NEW_MANUAL_INVOICE": "New manual invoice",
+    "MANUAL_INVOICE_HINT": "For a sale that didn't go through a table or delivery order — e.g. a service, or something already settled outside the POS.",
+    "CUSTOM_LINE_DESCRIPTION": "Description",
+    "CUSTOM_LINE_AMOUNT": "Amount",
+    "ADD_CUSTOM_LINE": "Add line",
     "ITEMS_REMOVED": "{{count}} item(s) removed",
     "REMOVED_BY_CUSTOMER": "Removed by customer",
     "ALL_ORDERS_PAID": "All orders are paid",
@@ -1108,7 +1123,9 @@
       "ITEMS": "Items",
       "TOTAL": "Total",
       "STATUS": "Status",
-      "DATE": "Date"
+      "DATE": "Date",
+      "INVOICED": "Invoiced",
+      "NOT_INVOICED": "Not invoiced"
     },
     "REMOVE_ITEM_CONFIRM": "Are you sure you want to remove this item?",
     "CANCELLATION_REASON": "Reason for cancellation (required for tax reporting):",
@@ -1154,6 +1171,7 @@
     "NO_DELIVERY_ORDERS_DESC": "Red Chicken Delivery and marketplace orders will appear here.",
     "CHANNEL_SATISFECHO_DELIVERY": "Red Chicken Delivery",
     "CHANNEL_MARKETPLACE": "Marketplace",
+    "CHANNEL_MANUAL_INVOICE": "Manual invoice",
     "MARKETPLACE_REF": "External ref",
     "DELIVERY_CREATED": "Delivery order created",
     "DELIVERY_CREATE_FAILED": "Could not create delivery order",
@@ -1214,7 +1232,8 @@
     "NO_RESULTS": "No customers found",
     "CREATE_NEW": "+ Create new customer",
     "CREATED": "Customer created",
-    "CREATE_FAILED": "Could not create customer"
+    "CREATE_FAILED": "Could not create customer",
+    "CONSUMIDOR_FINAL": "Consumidor final (no ID)"
   },
   "ORDER_STATUS": {
     "pending": "Pending",

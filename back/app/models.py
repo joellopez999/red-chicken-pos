@@ -59,6 +59,7 @@ class OrderChannel(str, Enum):
     table = "table"  # dine-in (default)
     satisfecho_delivery = "satisfecho_delivery"  # first-party Satisfecho Delivery
     marketplace = "marketplace"  # third-party (Glovo/Uber); usually paired with delivery_integration_id
+    manual_invoice = "manual_invoice"  # staff-entered sale created only to issue a fiscal invoice
 
 
 class BusinessType(str, Enum):
@@ -521,6 +522,9 @@ class Product(TenantMixin, table=True):
     kitchen_station_id: int | None = Field(
         default=None, foreign_key="kitchen_station.id", index=True
     )
+    # Internal line-item carrier for manual-invoice free-text lines (see sri_invoice_service.py
+    # get_or_create_manual_line_placeholder) — never shown in menu/product pickers.
+    is_manual_invoice_placeholder: bool = Field(default=False)
 
 
 class ProductQuestionType(str, Enum):
@@ -1703,6 +1707,25 @@ class SatisfechoDeliveryOrderCreate(SQLModel):
     customer_name: str | None = None
     notes: str | None = None  # delivery notes (stored on Order.notes)
     courier_user_id: int | None = None
+
+
+class ManualInvoiceLine(SQLModel):
+    """One line of a manual invoice: either a real menu product, or a free-text line
+    (description + amount) carried on the manual-invoice placeholder product."""
+
+    type: str  # "product" | "custom"
+    product_id: int | None = None  # required when type == "product"
+    description: str | None = None  # required when type == "custom"
+    quantity: int = 1
+    amount_cents: int | None = None  # required when type == "custom" (per-unit price)
+
+
+class ManualInvoiceCreate(SQLModel):
+    """Staff-entered sale created only to issue a fiscal (SRI) invoice — no table, no delivery."""
+
+    billing_customer_id: int | None = None
+    customer_name: str | None = None
+    lines: list[ManualInvoiceLine]
 
 
 class PublicSatisfechoDeliveryOrderCreate(SQLModel):

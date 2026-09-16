@@ -319,3 +319,41 @@ def generar_ride_pdf(comprobante: models.SriComprobante) -> BytesIO:
     doc.build(elements)
     buffer.seek(0)
     return buffer
+
+
+def sri_comprobante_by_order_ids(session: Session, order_ids: list[int]) -> dict[int, models.SriComprobante]:
+    """Bulk lookup for embedding SRI invoice status in an order list — avoids N+1 per-row
+    fetches (same pattern as branch_fulfillment.fulfillments_by_order_ids)."""
+    if not order_ids:
+        return {}
+    rows = session.exec(
+        select(models.SriComprobante).where(models.SriComprobante.order_id.in_(order_ids))
+    ).all()
+    return {r.order_id: r for r in rows}
+
+
+MANUAL_INVOICE_PLACEHOLDER_NAME = "Línea personalizada (factura manual)"
+
+
+def get_or_create_manual_line_placeholder(session: Session, tenant_id: int) -> models.Product:
+    """Lazily creates the per-tenant placeholder Product that carries free-text manual-invoice
+    lines. Never shown in product pickers (see the is_manual_invoice_placeholder filter on
+    GET /products)."""
+    existing = session.exec(
+        select(models.Product).where(
+            models.Product.tenant_id == tenant_id,
+            models.Product.is_manual_invoice_placeholder == True,  # noqa: E712
+        )
+    ).first()
+    if existing:
+        return existing
+    placeholder = models.Product(
+        tenant_id=tenant_id,
+        name=MANUAL_INVOICE_PLACEHOLDER_NAME,
+        price_cents=0,
+        is_manual_invoice_placeholder=True,
+    )
+    session.add(placeholder)
+    session.commit()
+    session.refresh(placeholder)
+    return placeholder

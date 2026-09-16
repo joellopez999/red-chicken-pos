@@ -77,7 +77,12 @@ from .fiscal_invoice_service import (
     issue_or_get_fiscal_invoice,
     order_fiscal_amount_cents,
 )
-from .sri_invoice_service import generar_clave_acceso, generar_xml_factura
+from .sri_invoice_service import (
+    generar_clave_acceso,
+    generar_xml_factura,
+    get_or_create_manual_line_placeholder,
+    sri_comprobante_by_order_ids,
+)
 from .sri_providers import enviar_recepcion
 from .sri_signing import EC_TZ, load_p12, sign_factura_xml
 from .tse_service import (
@@ -5817,8 +5822,8 @@ def list_products(
         # Refresh products to get updated image_filename
         for product in products:
             session.refresh(product)
-    
-    return products
+
+    return [p for p in products if not p.is_manual_invoice_placeholder]
 
 
 @app.post("/products")
@@ -13837,6 +13842,107 @@ def create_satisfecho_delivery_order_endpoint(
     }
 
 
+@app.post("/orders/manual-invoice")
+def create_manual_invoice_order(
+    body: models.ManualInvoiceCreate,
+    current_user: Annotated[models.User, Depends(require_permission(Permission.ORDER_UPDATE_STATUS))],
+    session: Session = Depends(get_session),
+) -> dict:
+    """Staff: create a standalone sale (no table, no delivery) whose only purpose is to issue
+    a fiscal (SRI) invoice — e.g. a service, or a sale that didn't go through the normal order
+    flow. Items are either real menu products or free-text lines (see ManualInvoiceLine)."""
+    if not body.lines:
+        raise HTTPException(status_code=400, detail="At least one line is required")
+
+    billing_customer = None
+    if body.billing_customer_id is not None:
+        billing_customer = session.exec(
+            select(models.BillingCustomer).where(
+                models.BillingCustomer.id == body.billing_customer_id,
+                models.BillingCustomer.tenant_id == current_user.tenant_id,
+            )
+        ).first()
+        if not billing_customer:
+            raise HTTPException(status_code=404, detail="Billing customer not found")
+
+    # Resolve and validate every line BEFORE creating anything, so a bad line never leaves
+    # behind an empty/partial order.
+    resolved: list[dict[str, Any]] = []
+    for line in body.lines:
+        quantity = max(1, line.quantity)
+        if line.type == "product":
+            if not line.product_id:
+                raise HTTPException(status_code=400, detail="product_id is required for product lines")
+            product = session.exec(
+                select(models.Product).where(
+                    models.Product.id == line.product_id,
+                    models.Product.tenant_id == current_user.tenant_id,
+                )
+            ).first()
+            if not product or product.is_manual_invoice_placeholder:
+                raise HTTPException(status_code=400, detail=f"Product not found: {line.product_id}")
+            resolved.append({
+                "product_id": product.id,
+                "product_name": product.name,
+                "quantity": quantity,
+                "price_cents": product.price_cents,
+            })
+        elif line.type == "custom":
+            description = (line.description or "").strip()
+            if not description:
+                raise HTTPException(status_code=400, detail="description is required for custom lines")
+            if not line.amount_cents or line.amount_cents <= 0:
+                raise HTTPException(status_code=400, detail="amount_cents must be > 0 for custom lines")
+            resolved.append({
+                "product_id": None,  # filled in below once the placeholder exists
+                "product_name": description,
+                "quantity": quantity,
+                "price_cents": line.amount_cents,
+            })
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown line type: {line.type}")
+
+    if any(r["product_id"] is None for r in resolved):
+        placeholder = get_or_create_manual_line_placeholder(session, current_user.tenant_id)
+        for r in resolved:
+            if r["product_id"] is None:
+                r["product_id"] = placeholder.id
+
+    order = models.Order(
+        tenant_id=current_user.tenant_id,
+        table_id=None,
+        order_channel=models.OrderChannel.manual_invoice,
+        status=models.OrderStatus.paid,
+        customer_name=body.customer_name or (billing_customer.name if billing_customer else None),
+        billing_customer_id=billing_customer.id if billing_customer else None,
+        paid_at=datetime.now(timezone.utc),
+        payment_method="manual_invoice",
+    )
+    session.add(order)
+    session.flush()  # get order.id without a second round trip
+
+    for r in resolved:
+        session.add(models.OrderItem(
+            order_id=order.id,
+            product_id=r["product_id"],
+            product_name=r["product_name"],
+            quantity=r["quantity"],
+            price_cents=r["price_cents"],
+            status=models.OrderItemStatus.delivered,
+        ))
+    session.commit()
+    session.refresh(order)
+
+    return {
+        "id": order.id,
+        "status": order.status.value,
+        "order_channel": _order_channel_value(order),
+        "customer_name": order.customer_name,
+        "billing_customer_id": order.billing_customer_id,
+        "created_at": order.created_at.isoformat() if order.created_at else None,
+    }
+
+
 @app.put("/orders/{order_id}/delivery")
 def update_order_delivery(
     order_id: int,
@@ -13936,6 +14042,9 @@ def list_orders(
     station_by_id = {s.id: s for s in station_rows if s.id is not None}
 
     hub_by_order = hub_ff.fulfillments_by_order_ids(
+        session, [o.id for o in orders if o.id is not None]
+    )
+    sri_comprobante_by_order = sri_comprobante_by_order_ids(
         session, [o.id for o in orders if o.id is not None]
     )
     group_for_user = rg.get_group_for_tenant(session, current_user.tenant_id)
@@ -14056,6 +14165,8 @@ def list_orders(
             table_display = "Satisfecho Delivery"
         elif getattr(order, "delivery_integration_id", None) or channel == models.OrderChannel.marketplace.value:
             table_display = "Delivery"
+        elif channel == models.OrderChannel.manual_invoice.value:
+            table_display = "Factura manual"
         elif table:
             table_display = table.name
 
@@ -14103,6 +14214,9 @@ def list_orders(
         ff = hub_by_order.get(order.id) if order.id is not None else None
         if ff:
             row_out["hub_fulfillment"] = hub_ff.fulfillment_to_dict(ff)
+        sri_row = sri_comprobante_by_order.get(order.id) if order.id is not None else None
+        if sri_row:
+            row_out["sri_comprobante"] = sri_comprobante_public_dict(sri_row)
         result.append(row_out)
     
     return result
@@ -14767,6 +14881,19 @@ def issue_order_sri_invoice(
     ).first()
     if not order or order.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    active_items = session.exec(
+        select(models.OrderItem).where(
+            models.OrderItem.order_id == order.id,
+            models.OrderItem.removed_by_customer == False,  # noqa: E712
+            models.OrderItem.removed_by_user_id.is_(None),
+            models.OrderItem.status != models.OrderItemStatus.cancelled,
+        )
+    ).all()
+    if not active_items:
+        raise HTTPException(status_code=400, detail="El pedido no tiene ítems para facturar")
+    if order_fiscal_amount_cents(session, order) <= 0:
+        raise HTTPException(status_code=400, detail="El total del pedido es cero; no se puede facturar")
 
     existing = session.exec(
         select(models.SriComprobante).where(

@@ -1595,6 +1595,7 @@ export interface Order {
   external_order_ref?: string | null;
   hub_fulfillment?: HubFulfillment | null;
   can_request_hub_fulfillment?: boolean;
+  sri_comprobante?: SriComprobantePublic | null;
 }
 
 /** Staff create first-party Satisfecho Delivery order (no table). */
@@ -1605,6 +1606,29 @@ export interface SatisfechoDeliveryOrderCreate {
   customer_name?: string | null;
   notes?: string | null;
   courier_user_id?: number | null;
+}
+
+export interface ManualInvoiceLine {
+  type: 'product' | 'custom';
+  product_id?: number | null;
+  description?: string | null;
+  quantity: number;
+  amount_cents?: number | null;
+}
+
+export interface ManualInvoiceCreate {
+  billing_customer_id?: number | null;
+  customer_name?: string | null;
+  lines: ManualInvoiceLine[];
+}
+
+export interface ManualInvoiceResponse {
+  id: number;
+  status: string;
+  order_channel: string;
+  customer_name: string | null;
+  billing_customer_id: number | null;
+  created_at: string | null;
 }
 
 export interface OrderDeliveryUpdate {
@@ -2823,6 +2847,10 @@ export class ApiService {
 
   createSatisfechoDeliveryOrder(body: SatisfechoDeliveryOrderCreate): Observable<SatisfechoDeliveryOrderResponse> {
     return this.http.post<SatisfechoDeliveryOrderResponse>(`${this.apiUrl}/orders/satisfecho-delivery`, body);
+  }
+
+  createManualInvoiceOrder(body: ManualInvoiceCreate): Observable<ManualInvoiceResponse> {
+    return this.http.post<ManualInvoiceResponse>(`${this.apiUrl}/orders/manual-invoice`, body);
   }
 
   /** Public guest: create Satisfecho Delivery order (address + phone required). */

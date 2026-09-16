@@ -7,6 +7,7 @@
     "CANCEL": "Cancelar",
     "DISCARD": "Descartar",
     "DELETE": "Eliminar",
+    "CLEAR": "Quitar",
     "EDIT": "Editar",
     "ADD": "Añadir",
     "CLOSE": "Cerrar",
@@ -910,6 +911,20 @@
     "SRI_AUTHORIZED": "Factura autorizada por el SRI",
     "SRI_REJECTED": "El SRI rechazó la factura",
     "SRI_STILL_PROCESSING": "El SRI todavía está procesando la autorización; revisa en un momento",
+    "SRI_ISSUE_CONFIRM": "¿Enviar esta factura al SRI para {{customer}}, total {{total}}? No se puede deshacer una vez enviada.",
+    "SRI_DOWNLOAD_RIDE": "Descargar factura (RIDE)",
+    "SRI_ESTADO": {
+      "AUT": "Facturado",
+      "NAT": "Rechazado",
+      "DEVUELTA": "Rechazado",
+      "RECIBIDA": "Procesando",
+      "PPR": "Procesando"
+    },
+    "NEW_MANUAL_INVOICE": "Nueva factura manual",
+    "MANUAL_INVOICE_HINT": "Para una venta que no pasó por mesa ni domicilio — ej. un servicio, o algo que ya se cobró fuera del POS.",
+    "CUSTOM_LINE_DESCRIPTION": "Descripción",
+    "CUSTOM_LINE_AMOUNT": "Monto",
+    "ADD_CUSTOM_LINE": "Agregar línea",
     "ITEMS_REMOVED": "{{count}} artículo(s) eliminado(s)",
     "REMOVED_BY_CUSTOMER": "Eliminado por el cliente",
     "ALL_ORDERS_PAID": "Todos los pedidos están pagados",
@@ -952,7 +967,9 @@
       "ITEMS": "Artículos",
       "TOTAL": "Total",
       "STATUS": "Estado",
-      "DATE": "Fecha"
+      "DATE": "Fecha",
+      "INVOICED": "Facturado",
+      "NOT_INVOICED": "Sin facturar"
     },
     "REMOVE_ITEM_CONFIRM": "¿Estás seguro de que quieres eliminar este artículo?",
     "CANCELLATION_REASON": "Motivo de la cancelación (requerido para informes fiscales):",
@@ -995,6 +1012,7 @@
     "NO_DELIVERY_ORDERS_DESC": "Aquí aparecerán los pedidos Red Chicken Delivery y de marketplace.",
     "CHANNEL_SATISFECHO_DELIVERY": "Red Chicken Delivery",
     "CHANNEL_MARKETPLACE": "Marketplace",
+    "CHANNEL_MANUAL_INVOICE": "Factura manual",
     "MARKETPLACE_REF": "Ref. externa",
     "DELIVERY_CREATED": "Pedido a domicilio creado",
     "DELIVERY_CREATE_FAILED": "No se pudo crear el pedido a domicilio",
@@ -1058,7 +1076,8 @@
     "NO_RESULTS": "No se encontraron clientes",
     "CREATE_NEW": "+ Crear nuevo cliente",
     "CREATED": "Cliente creado",
-    "CREATE_FAILED": "No se pudo crear el cliente"
+    "CREATE_FAILED": "No se pudo crear el cliente",
+    "CONSUMIDOR_FINAL": "Consumidor final (sin identificación)"
   },
   "ORDER_STATUS": {
     "pending": "Pendiente",
