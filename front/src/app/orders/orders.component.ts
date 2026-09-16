@@ -338,8 +338,8 @@ ModuleRegistry.registerModules([
                           {{ 'COMMON.EDIT' | translate }}
                         </button>
                         @if (sriInvoicingEnabled() && order.status !== 'cancelled') {
-                          <button type="button" class="btn btn-secondary" (click)="openOrderEdit(order)">
-                            {{ 'ORDERS.INVOICE_SHORT' | translate }}
+                          <button type="button" class="btn btn-secondary" (click)="openOrderEdit(order)" [disabled]="order.sri_comprobante?.estado === 'AUT'">
+                            {{ order.sri_comprobante?.estado === 'AUT' ? ('ORDERS.INVOICED_LABEL' | translate) : ('ORDERS.INVOICE_SHORT' | translate) }}
                           </button>
                         }
                         @if (order.status !== 'paid' && order.status !== 'cancelled' && canMarkPaid()) {
@@ -688,8 +688,8 @@ ModuleRegistry.registerModules([
                             {{ 'COMMON.EDIT' | translate }}
                           </button>
                           @if (sriInvoicingEnabled() && order.status !== 'cancelled') {
-                            <button type="button" class="btn btn-secondary" (click)="openOrderEdit(order)">
-                              {{ 'ORDERS.INVOICE_SHORT' | translate }}
+                            <button type="button" class="btn btn-secondary" (click)="openOrderEdit(order)" [disabled]="order.sri_comprobante?.estado === 'AUT'">
+                              {{ order.sri_comprobante?.estado === 'AUT' ? ('ORDERS.INVOICED_LABEL' | translate) : ('ORDERS.INVOICE_SHORT' | translate) }}
                             </button>
                           }
                           @if (order.status !== 'paid' && order.status !== 'cancelled' && canMarkPaid()) {
@@ -933,8 +933,8 @@ ModuleRegistry.registerModules([
                             {{ 'COMMON.EDIT' | translate }}
                           </button>
                           @if (sriInvoicingEnabled() && order.status !== 'cancelled') {
-                            <button type="button" class="btn btn-secondary" (click)="openOrderEdit(order)">
-                              {{ 'ORDERS.INVOICE_SHORT' | translate }}
+                            <button type="button" class="btn btn-secondary" (click)="openOrderEdit(order)" [disabled]="order.sri_comprobante?.estado === 'AUT'">
+                              {{ order.sri_comprobante?.estado === 'AUT' ? ('ORDERS.INVOICED_LABEL' | translate) : ('ORDERS.INVOICE_SHORT' | translate) }}
                             </button>
                           }
                           @if (order.status !== 'paid' && order.status !== 'cancelled' && canMarkPaid()) {
@@ -1109,8 +1109,8 @@ ModuleRegistry.registerModules([
                 <button type="button" class="btn btn-secondary" (click)="printEditOrderInvoice()">{{ 'ORDERS.PRINT_INVOICE' | translate }}</button>
                 <button type="button" class="btn btn-secondary" (click)="printEditOrderKitchen()">{{ 'ORDERS.PRINT_KITCHEN' | translate }}</button>
                 @if (sriInvoicingEnabled()) {
-                  <button type="button" class="btn btn-secondary" (click)="issueSriInvoiceForEditOrder()" [disabled]="issuingSriInvoice()">
-                    {{ issuingSriInvoice() ? ('ORDERS.SRI_ISSUING' | translate) : ('ORDERS.SRI_ISSUE_INVOICE' | translate) }}
+                  <button type="button" class="btn btn-secondary" (click)="issueSriInvoiceForEditOrder()" [disabled]="issuingSriInvoice() || order.sri_comprobante?.estado === 'AUT'">
+                    {{ issuingSriInvoice() ? ('ORDERS.SRI_ISSUING' | translate) : order.sri_comprobante?.estado === 'AUT' ? ('ORDERS.INVOICED_LABEL' | translate) : ('ORDERS.SRI_ISSUE_INVOICE' | translate) }}
                   </button>
                 }
                 @if (order.status !== 'paid' && order.status !== 'cancelled' && canMarkPaid()) {
@@ -4810,12 +4810,14 @@ export class OrdersComponent implements OnInit, OnDestroy {
       this.issuingSriInvoice.set(false);
       this.showToast(this.translate.instant('ORDERS.SRI_AUTHORIZED'), 'success');
       window.open(this.api.sriInvoiceRideUrl(orderId), '_blank');
+      this.loadOrders();
       return;
     }
     if (comp.estado === 'NAT' || comp.estado === 'DEVUELTA') {
       this.issuingSriInvoice.set(false);
       const msg = comp.mensajes_error?.mensajes?.[0]?.mensaje || comp.estado;
       this.showToast(`${this.translate.instant('ORDERS.SRI_REJECTED')}: ${msg}`, 'error');
+      this.loadOrders();
       return;
     }
     if (attempt >= 15) {

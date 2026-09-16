@@ -1064,6 +1064,7 @@
     "CANCEL_ORDER_FAILED": "Failed to cancel order",
     "SRI_ISSUE_INVOICE": "Issue SRI invoice",
     "INVOICE_SHORT": "Invoice",
+    "INVOICED_LABEL": "Invoiced",
     "SRI_ISSUING": "Sending to SRI...",
     "SRI_AUTHORIZED": "Invoice authorized by SRI",
     "SRI_REJECTED": "SRI rejected the invoice",
