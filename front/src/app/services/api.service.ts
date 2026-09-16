@@ -1604,6 +1604,7 @@ export interface SatisfechoDeliveryOrderCreate {
   delivery_address: string;
   customer_phone?: string | null;
   customer_name?: string | null;
+  billing_customer_id?: number | null;
   notes?: string | null;
   courier_user_id?: number | null;
 }

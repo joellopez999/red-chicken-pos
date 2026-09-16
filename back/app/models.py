@@ -1705,6 +1705,7 @@ class SatisfechoDeliveryOrderCreate(SQLModel):
     delivery_address: str
     customer_phone: str | None = None
     customer_name: str | None = None
+    billing_customer_id: int | None = None
     notes: str | None = None  # delivery notes (stored on Order.notes)
     courier_user_id: int | None = None
 

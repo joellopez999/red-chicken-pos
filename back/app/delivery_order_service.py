@@ -423,6 +423,7 @@ def create_satisfecho_delivery_order(
     notify_kitchen: bool = True,
     delivery_fee_cents: int | None = None,
     require_address: bool = True,
+    billing_customer_id: int | None = None,
 ) -> tuple[models.Order | None, dict]:
     """
     Create a first-party Satisfecho Delivery order (no marketplace integration, no table).
@@ -446,6 +447,11 @@ def create_satisfecho_delivery_order(
             or courier.role != models.UserRole.courier
         ):
             return None, {"status": "error", "detail": "invalid_courier_user"}
+
+    if billing_customer_id is not None:
+        billing_customer = session.get(models.BillingCustomer, billing_customer_id)
+        if not billing_customer or billing_customer.tenant_id != tenant_id:
+            return None, {"status": "error", "detail": "invalid_billing_customer"}
 
     resolved_lines, err = _resolve_product_lines(session, tenant_id=tenant_id, lines=lines)
     if err:
@@ -474,6 +480,7 @@ def create_satisfecho_delivery_order(
         customer_phone=customer_phone,
         courier_user_id=courier_user_id,
         delivery_fee_cents=fee,
+        billing_customer_id=billing_customer_id,
     )
     session.add(order)
     session.flush()

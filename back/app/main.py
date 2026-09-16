@@ -13815,6 +13815,7 @@ def create_satisfecho_delivery_order_endpoint(
         notes=body.notes,
         courier_user_id=body.courier_user_id,
         require_address=False,
+        billing_customer_id=body.billing_customer_id,
     )
     if not order:
         detail = outcome.get("detail", "create_failed")
@@ -13822,6 +13823,8 @@ def create_satisfecho_delivery_order_endpoint(
             raise HTTPException(status_code=400, detail="delivery_address is required")
         if detail == "invalid_courier_user":
             raise HTTPException(status_code=400, detail="courier_user_id must be a courier in this tenant")
+        if detail == "invalid_billing_customer":
+            raise HTTPException(status_code=400, detail="billing_customer_id not found for this tenant")
         if detail == "no_lines":
             raise HTTPException(status_code=400, detail="Order must have at least one item")
         if str(detail).startswith("product_not_found"):
@@ -13835,6 +13838,7 @@ def create_satisfecho_delivery_order_endpoint(
         "delivery_address": order.delivery_address,
         "customer_phone": order.customer_phone,
         "customer_name": order.customer_name,
+        "billing_customer_id": order.billing_customer_id,
         "notes": order.notes,
         "courier_user_id": order.courier_user_id,
         "table_id": order.table_id,

@@ -338,8 +338,8 @@ ModuleRegistry.registerModules([
                           {{ 'COMMON.EDIT' | translate }}
                         </button>
                         @if (sriInvoicingEnabled() && order.status !== 'cancelled') {
-                          <button type="button" class="btn btn-secondary" (click)="issueSriInvoiceForOrder(order)" [disabled]="issuingSriInvoice()">
-                            {{ issuingSriInvoice() ? ('ORDERS.SRI_ISSUING' | translate) : ('ORDERS.INVOICE_SHORT' | translate) }}
+                          <button type="button" class="btn btn-secondary" (click)="openOrderEdit(order)">
+                            {{ 'ORDERS.INVOICE_SHORT' | translate }}
                           </button>
                         }
                         @if (order.status !== 'paid' && order.status !== 'cancelled' && canMarkPaid()) {
@@ -688,8 +688,8 @@ ModuleRegistry.registerModules([
                             {{ 'COMMON.EDIT' | translate }}
                           </button>
                           @if (sriInvoicingEnabled() && order.status !== 'cancelled') {
-                            <button type="button" class="btn btn-secondary" (click)="issueSriInvoiceForOrder(order)" [disabled]="issuingSriInvoice()">
-                              {{ issuingSriInvoice() ? ('ORDERS.SRI_ISSUING' | translate) : ('ORDERS.INVOICE_SHORT' | translate) }}
+                            <button type="button" class="btn btn-secondary" (click)="openOrderEdit(order)">
+                              {{ 'ORDERS.INVOICE_SHORT' | translate }}
                             </button>
                           }
                           @if (order.status !== 'paid' && order.status !== 'cancelled' && canMarkPaid()) {
@@ -933,8 +933,8 @@ ModuleRegistry.registerModules([
                             {{ 'COMMON.EDIT' | translate }}
                           </button>
                           @if (sriInvoicingEnabled() && order.status !== 'cancelled') {
-                            <button type="button" class="btn btn-secondary" (click)="issueSriInvoiceForOrder(order)" [disabled]="issuingSriInvoice()">
-                              {{ issuingSriInvoice() ? ('ORDERS.SRI_ISSUING' | translate) : ('ORDERS.INVOICE_SHORT' | translate) }}
+                            <button type="button" class="btn btn-secondary" (click)="openOrderEdit(order)">
+                              {{ 'ORDERS.INVOICE_SHORT' | translate }}
                             </button>
                           }
                           @if (order.status !== 'paid' && order.status !== 'cancelled' && canMarkPaid()) {
@@ -1345,7 +1345,19 @@ ModuleRegistry.registerModules([
                   <p class="modal-hint">{{ 'ORDERS.NEW_DELIVERY_HINT' | translate }}</p>
                   <div class="form-group">
                     <label for="delivery-customer">{{ 'ORDERS.CUSTOMER' | translate }} *</label>
-                    <input id="delivery-customer" type="text" class="form-input" [(ngModel)]="deliveryFormCustomerName" name="deliveryCustomer" required />
+                    <div class="billing-customer-row">
+                      <input id="delivery-customer" type="text" class="form-input" [(ngModel)]="deliveryFormCustomerName" name="deliveryCustomer" required />
+                      <button type="button" class="btn btn-secondary" (click)="openCustomerPicker('deliveryCreate')">{{ 'CUSTOMERS.SEARCH_OR_CREATE' | translate }}</button>
+                    </div>
+                    @if (deliveryFormBillingCustomer) {
+                      <div class="customer-picker-row" style="cursor:default; margin-top: var(--space-2);">
+                        <span class="customer-picker-name">{{ deliveryFormBillingCustomer.company_name || deliveryFormBillingCustomer.name }}</span>
+                        @if (deliveryFormBillingCustomer.tax_id) {
+                          <span class="customer-picker-tax">{{ deliveryFormBillingCustomer.tax_id }}</span>
+                        }
+                        <button type="button" class="btn-remove-row" (click)="deliveryFormBillingCustomer = null" [title]="'COMMON.CLEAR' | translate">✕</button>
+                      </div>
+                    }
                   </div>
                   <div class="form-group">
                     <label for="delivery-address">{{ 'ORDERS.DELIVERY_ADDRESS' | translate }}</label>
@@ -3204,6 +3216,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   deliveryFormAddress = '';
   deliveryFormPhone = '';
   deliveryFormCustomerName = '';
+  deliveryFormBillingCustomer: BillingCustomer | null = null;
   deliveryFormNotes = '';
   deliveryFormCourierId: number | null = null;
   deliveryDraftItems: { product_id: number; name: string; quantity: number; price_cents: number; tax_rate_percent: number }[] = [];
@@ -3800,6 +3813,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.deliveryFormAddress = '';
     this.deliveryFormPhone = '';
     this.deliveryFormCustomerName = '';
+    this.deliveryFormBillingCustomer = null;
     this.deliveryFormNotes = '';
     this.deliveryFormCourierId = null;
     this.deliveryDraftItems = [];
@@ -3946,6 +3960,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
       delivery_address: this.deliveryFormAddress.trim(),
       customer_phone: this.deliveryFormPhone.trim() || null,
       customer_name: this.deliveryFormCustomerName.trim() || null,
+      billing_customer_id: this.deliveryFormBillingCustomer?.id ?? null,
       notes: this.deliveryFormNotes.trim() || null,
       courier_user_id: this.deliveryFormCourierId,
     }).subscribe({
@@ -4087,9 +4102,9 @@ export class OrdersComponent implements OnInit, OnDestroy {
     });
   }
 
-  customerPickerTarget: 'editOrder' | 'manualInvoice' = 'editOrder';
+  customerPickerTarget: 'editOrder' | 'manualInvoice' | 'deliveryCreate' = 'editOrder';
 
-  openCustomerPicker(target: 'editOrder' | 'manualInvoice' = 'editOrder'): void {
+  openCustomerPicker(target: 'editOrder' | 'manualInvoice' | 'deliveryCreate' = 'editOrder'): void {
     this.customerPickerTarget = target;
     this.customerPickerSearch = '';
     this.customerPickerCreating.set(false);
@@ -4112,6 +4127,12 @@ export class OrdersComponent implements OnInit, OnDestroy {
   selectCustomerFromPicker(customer: BillingCustomer): void {
     if (this.customerPickerTarget === 'manualInvoice') {
       this.manualInvoiceBillingCustomer = customer;
+      this.closeCustomerPicker();
+      return;
+    }
+    if (this.customerPickerTarget === 'deliveryCreate') {
+      this.deliveryFormBillingCustomer = customer;
+      this.deliveryFormCustomerName = customer.company_name || customer.name;
       this.closeCustomerPicker();
       return;
     }
