@@ -14,6 +14,7 @@ from sqlmodel import Session, select
 
 from app import models
 from app.db import engine
+from app.resend_service import send_invoice_email
 from app.sri_invoice_service import generar_ride_pdf
 from app.sri_providers import consultar_autorizacion
 
@@ -29,13 +30,38 @@ def ride_pdf_path(tenant_id: int, clave_acceso: str) -> Path:
     return UPLOADS_DIR / str(tenant_id) / "sri" / "ride" / f"{clave_acceso}.pdf"
 
 
-def _save_ride_pdf(row: models.SriComprobante) -> None:
+def _save_ride_pdf(row: models.SriComprobante) -> bytes | None:
     try:
         path = ride_pdf_path(row.tenant_id, row.clave_acceso)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(generar_ride_pdf(row).read())
+        pdf_bytes = generar_ride_pdf(row).read()
+        path.write_bytes(pdf_bytes)
+        return pdf_bytes
     except Exception as e:
         logger.warning("Failed to save RIDE PDF for %s: %s", row.clave_acceso, e)
+        return None
+
+
+def _send_invoice_email_if_configured(session: Session, row: models.SriComprobante, pdf_bytes: bytes | None) -> None:
+    if not pdf_bytes:
+        return
+    tenant = session.get(models.Tenant, row.tenant_id)
+    if not tenant or not (tenant.resend_api_key or "").strip():
+        return
+    order = session.get(models.Order, row.order_id)
+    if not order or not order.billing_customer_id:
+        return
+    billing_customer = session.get(models.BillingCustomer, order.billing_customer_id)
+    if not billing_customer or not billing_customer.email:
+        return
+    sent = send_invoice_email(
+        tenant, billing_customer.email, billing_customer.name, row, pdf_bytes,
+        row.xml_autorizado.encode("utf-8") if row.xml_autorizado else None,
+    )
+    if sent:
+        row.email_sent_at = datetime.now(timezone.utc)
+        session.add(row)
+        session.commit()
 
 
 def _tick_sync() -> int:
@@ -70,7 +96,8 @@ def _tick_sync() -> int:
             session.commit()
             if row.estado == "AUT":
                 session.refresh(row)
-                _save_ride_pdf(row)
+                pdf_bytes = _save_ride_pdf(row)
+                _send_invoice_email_if_configured(session, row, pdf_bytes)
     return processed
 
 

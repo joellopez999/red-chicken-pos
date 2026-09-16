@@ -1458,6 +1458,7 @@ export interface SriComprobantePublic {
   mensajes_error: { mensajes: Array<{ identificador?: string; mensaje?: string; informacionAdicional?: string }> } | null;
   amount_cents: number;
   created_at: string | null;
+  email_sent_at: string | null;
 }
 
 /** German TSE transaction metadata (KassenSichV preparation — not a certification claim). */
@@ -1868,6 +1869,7 @@ export interface TenantSettings {
   sri_punto_emision?: string | null;
   sri_obligado_contabilidad?: boolean | null;
   sri_certificate_filename?: string | null;
+  resend_api_key?: string | null;
 }
 
 export interface OrderItemCreate {
@@ -3132,6 +3134,10 @@ export class ApiService {
 
   sriInvoiceRideUrl(orderId: number): string {
     return `${this.apiUrl}/orders/${orderId}/sri-invoice/ride`;
+  }
+
+  sendSriInvoiceEmail(orderId: number, email?: string | null): Observable<SriComprobantePublic> {
+    return this.http.post<SriComprobantePublic>(`${this.apiUrl}/orders/${orderId}/sri-invoice/send-email`, { email: email || null });
   }
 
   uploadSriCertificate(file: File, password: string): Observable<{ status: string; uploaded_at: string }> {

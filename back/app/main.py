@@ -79,6 +79,7 @@ from .fiscal_invoice_service import (
 )
 from .sri_invoice_service import (
     generar_clave_acceso,
+    generar_ride_pdf,
     generar_xml_factura,
     get_or_create_manual_line_placeholder,
     sri_comprobante_by_order_ids,
@@ -4048,6 +4049,8 @@ def get_tenant_settings(
         tenant_dict["smtp_password"] = "********"
     if tenant_dict.get("sri_certificate_password"):
         tenant_dict["sri_certificate_password"] = "********"
+    if tenant_dict.get("resend_api_key"):
+        tenant_dict["resend_api_key"] = "********"
 
     apply_tenant_currency_api_dict(tenant_dict)
     tenant_dict["ui_modules"] = resolve_tenant_ui_modules(tenant.ui_modules)
@@ -4323,6 +4326,10 @@ def update_tenant_settings(
         tenant.sri_punto_emision = pe[:3] if pe else "001"
     if tenant_update.sri_obligado_contabilidad is not None:
         tenant.sri_obligado_contabilidad = bool(tenant_update.sri_obligado_contabilidad)
+    if tenant_update.resend_api_key is not None:
+        if isinstance(tenant_update.resend_api_key, str) and tenant_update.resend_api_key.strip():
+            tenant.resend_api_key = tenant_update.resend_api_key.strip()[:255]
+        # Empty = keep existing
 
     # Per-tenant SMTP / email (optional; fallback to global config)
     if tenant_update.smtp_host is not None:
@@ -4639,6 +4646,8 @@ def update_tenant_settings(
         tenant_dict["smtp_password"] = "********"
     if tenant_dict.get("sri_certificate_password"):
         tenant_dict["sri_certificate_password"] = "********"
+    if tenant_dict.get("resend_api_key"):
+        tenant_dict["resend_api_key"] = "********"
 
     apply_tenant_currency_api_dict(tenant_dict)
     tenant_dict["ui_modules"] = resolve_tenant_ui_modules(tenant.ui_modules)
@@ -5519,6 +5528,8 @@ async def upload_tenant_logo(
         tenant_dict["smtp_password"] = "********"
     if tenant_dict.get("sri_certificate_password"):
         tenant_dict["sri_certificate_password"] = "********"
+    if tenant_dict.get("resend_api_key"):
+        tenant_dict["resend_api_key"] = "********"
 
     return tenant_dict
 
@@ -5570,6 +5581,8 @@ def delete_tenant_logo(
         tenant_dict["smtp_password"] = "********"
     if tenant_dict.get("sri_certificate_password"):
         tenant_dict["sri_certificate_password"] = "********"
+    if tenant_dict.get("resend_api_key"):
+        tenant_dict["resend_api_key"] = "********"
     return JSONResponse(content=tenant_dict)
 
 
@@ -5645,6 +5658,8 @@ async def upload_tenant_header_background(
         tenant_dict["smtp_password"] = "********"
     if tenant_dict.get("sri_certificate_password"):
         tenant_dict["sri_certificate_password"] = "********"
+    if tenant_dict.get("resend_api_key"):
+        tenant_dict["resend_api_key"] = "********"
     return JSONResponse(content=tenant_dict)
 
 
@@ -5692,6 +5707,8 @@ def delete_tenant_header_background(
         tenant_dict["smtp_password"] = "********"
     if tenant_dict.get("sri_certificate_password"):
         tenant_dict["sri_certificate_password"] = "********"
+    if tenant_dict.get("resend_api_key"):
+        tenant_dict["resend_api_key"] = "********"
     return JSONResponse(content=tenant_dict)
 
 
@@ -14829,6 +14846,7 @@ def sri_comprobante_public_dict(row: models.SriComprobante) -> dict:
         "mensajes_error": row.mensajes_error,
         "amount_cents": row.amount_cents,
         "created_at": row.created_at.isoformat() if row.created_at else None,
+        "email_sent_at": row.email_sent_at.isoformat() if row.email_sent_at else None,
     }
 
 
@@ -15022,6 +15040,67 @@ def download_order_sri_ride(
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="factura-{row.clave_acceso}.pdf"'},
     )
+
+
+@app.post("/orders/{order_id}/sri-invoice/send-email")
+def send_order_sri_invoice_email(
+    order_id: int,
+    body: models.SriInvoiceEmailRequest,
+    current_user: Annotated[models.User, Depends(require_permission(Permission.ORDER_READ))],
+    session: Session = Depends(get_session),
+) -> dict:
+    """Manually (re)send the authorized invoice by email via Resend. Only available once AUT."""
+    tenant = session.exec(select(models.Tenant).where(models.Tenant.id == current_user.tenant_id)).first()
+    if not tenant or not (tenant.resend_api_key or "").strip():
+        raise HTTPException(status_code=400, detail="Resend no está configurado en Ajustes")
+
+    order = session.exec(
+        select(models.Order).where(
+            models.Order.id == order_id,
+            models.Order.tenant_id == current_user.tenant_id,
+        )
+    ).first()
+    if not order or order.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    row = session.exec(
+        select(models.SriComprobante).where(
+            models.SriComprobante.order_id == order.id,
+            models.SriComprobante.tenant_id == current_user.tenant_id,
+        )
+    ).first()
+    if not row or row.estado != "AUT":
+        raise HTTPException(status_code=400, detail="La factura todavía no está autorizada")
+
+    email = (body.email or "").strip()
+    name = None
+    if not email and order.billing_customer_id:
+        billing_customer = session.get(models.BillingCustomer, order.billing_customer_id)
+        if billing_customer and billing_customer.email:
+            email = billing_customer.email
+            name = billing_customer.name
+    if not email:
+        raise HTTPException(status_code=400, detail="No hay un correo del cliente; indícalo manualmente")
+
+    from app.sri_authorization_worker import ride_pdf_path
+
+    saved_path = ride_pdf_path(row.tenant_id, row.clave_acceso)
+    pdf_bytes = saved_path.read_bytes() if saved_path.is_file() else generar_ride_pdf(row).read()
+
+    from app.resend_service import send_invoice_email
+
+    sent = send_invoice_email(
+        tenant, email, name, row, pdf_bytes,
+        row.xml_autorizado.encode("utf-8") if row.xml_autorizado else None,
+    )
+    if not sent:
+        raise HTTPException(status_code=502, detail="No se pudo enviar el correo (revisa la API key de Resend)")
+
+    row.email_sent_at = datetime.now(timezone.utc)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return sri_comprobante_public_dict(row)
 
 
 @app.post("/orders/{order_id}/fiscal-invoice/cancel")

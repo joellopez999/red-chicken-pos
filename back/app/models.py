@@ -270,6 +270,9 @@ class Tenant(SQLModel, table=True):
     sri_secuencial_factura: int = Field(default=1)
     sri_certificate_filename: str | None = Field(default=None, max_length=255)  # relative path under uploads/{tenant_id}/sri/
     sri_certificate_password: str | None = Field(default=None, max_length=512)
+    # Resend (resend.com) API key — sends the authorized invoice (RIDE + XML) to the customer's
+    # email, automatically once AUT and via a manual resend button. Reuses email_from/email_from_name.
+    resend_api_key: str | None = Field(default=None, max_length=255)
 
     # Platform SaaS subscription (Satisfecho paywall — not restaurant guest payments)
     # none | trialing | active | canceled | past_due | grandfathered
@@ -1191,6 +1194,7 @@ class SriComprobante(SQLModel, table=True):
     amount_cents: int = Field(default=0)
     submitted_at: datetime | None = Field(default=None)
     last_checked_at: datetime | None = Field(default=None)
+    email_sent_at: datetime | None = Field(default=None)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -1729,6 +1733,12 @@ class ManualInvoiceCreate(SQLModel):
     lines: list[ManualInvoiceLine]
 
 
+class SriInvoiceEmailRequest(SQLModel):
+    """Manual "resend invoice email" — email override lets staff send to an address not on file."""
+
+    email: str | None = None
+
+
 class PublicSatisfechoDeliveryOrderCreate(SQLModel):
     """Public guest create for Satisfecho Delivery (address + phone required; no courier assign)."""
 
@@ -1983,6 +1993,7 @@ class TenantUpdate(SQLModel):
     sri_establecimiento: str | None = Field(default=None, max_length=3)
     sri_punto_emision: str | None = Field(default=None, max_length=3)
     sri_obligado_contabilidad: bool | None = None
+    resend_api_key: str | None = None
 
 
 class TenantProductCreate(SQLModel):

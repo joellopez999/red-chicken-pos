@@ -1500,6 +1500,19 @@ import { MAX_IMAGE_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_MB } from '../shared/image-upl
                     />
                     <p class="hint">{{ 'SETTINGS.SRI_CERTIFICATE_HINT' | translate }}</p>
                   </div>
+                  <div class="form-group">
+                    <label for="resend_api_key">{{ 'SETTINGS.RESEND_API_KEY' | translate }}</label>
+                    <input
+                      type="password"
+                      id="resend_api_key"
+                      [(ngModel)]="formData.resend_api_key"
+                      name="resend_api_key"
+                      placeholder="••••••••••••••••"
+                      autocomplete="off"
+                      class="input-medium"
+                    />
+                    <p class="hint">{{ 'SETTINGS.RESEND_API_KEY_HINT' | translate }}</p>
+                  </div>
 
                   <div class="form-group checkbox-row">
                     <label class="switch">
@@ -3381,6 +3394,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
     sri_establecimiento: '001',
     sri_punto_emision: '001',
     sri_obligado_contabilidad: false,
+    resend_api_key: null as string | null,
   };
 
   allTimezones: string[] = [];
@@ -3527,6 +3541,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
           sri_establecimiento: settings.sri_establecimiento?.trim() || '001',
           sri_punto_emision: settings.sri_punto_emision?.trim() || '001',
           sri_obligado_contabilidad: settings.sri_obligado_contabilidad ?? false,
+          resend_api_key: null,
         };
         this.sriCertificateSelectedName.set(settings.sri_certificate_filename ? 'certificado.p12' : null);
         this.clockQrLastToken.set(null);
@@ -4533,6 +4548,9 @@ export class SettingsComponent implements OnInit, OnDestroy {
     }
     if (updateData.tse_api_secret === '' || updateData.tse_api_secret == null) {
       delete updateData.tse_api_secret;
+    }
+    if (updateData.resend_api_key === '' || updateData.resend_api_key == null) {
+      delete updateData.resend_api_key;
     }
     const fc = (updateData.fiscal_country || '').toString().trim().toUpperCase();
     updateData.fiscal_country = fc.length === 2 ? fc : null;

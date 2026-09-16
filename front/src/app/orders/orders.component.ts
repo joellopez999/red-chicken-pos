@@ -1113,6 +1113,11 @@ ModuleRegistry.registerModules([
                     {{ issuingSriInvoice() ? ('ORDERS.SRI_ISSUING' | translate) : order.sri_comprobante?.estado === 'AUT' ? ('ORDERS.INVOICED_LABEL' | translate) : ('ORDERS.SRI_ISSUE_INVOICE' | translate) }}
                   </button>
                 }
+                @if (order.sri_comprobante?.estado === 'AUT') {
+                  <button type="button" class="btn btn-secondary" (click)="sendSriInvoiceEmail(order)" [disabled]="sendingSriInvoiceEmail()">
+                    {{ order.sri_comprobante?.email_sent_at ? ('ORDERS.SRI_RESEND_EMAIL' | translate) : ('ORDERS.SRI_SEND_EMAIL' | translate) }}
+                  </button>
+                }
                 @if (order.status !== 'paid' && order.status !== 'cancelled' && canMarkPaid()) {
                   <button type="button" class="btn btn-primary" (click)="markEditOrderAsPaid(order)">{{ 'ORDERS.MARK_AS_PAID' | translate }}</button>
                 }
@@ -3469,6 +3474,9 @@ export class OrdersComponent implements OnInit, OnDestroy {
           };
           const color = colorMap[estado] || '#78716C';
           const label = this.translate.instant(`ORDERS.SRI_ESTADO.${estado}`) || estado;
+          const emailBadge = params.value?.email_sent_at
+            ? ` <span title="${this.translate.instant('ORDERS.SRI_EMAIL_SENT')}">✉️</span>`
+            : '';
           return `<span style="
             display: inline-block;
             padding: 2px 10px;
@@ -3478,7 +3486,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
             background: ${color}20;
             color: ${color};
             line-height: 1.4;
-          ">${label}</span>`;
+          ">${label}</span>${emailBadge}`;
         },
       },
       {
@@ -4767,6 +4775,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   }
 
   issuingSriInvoice = signal(false);
+  sendingSriInvoiceEmail = signal(false);
 
   sriInvoicingEnabled(): boolean {
     const m = this.tenantSettings()?.sri_mode;
@@ -4803,6 +4812,27 @@ export class OrdersComponent implements OnInit, OnDestroy {
       },
       { confirmText: this.translate.instant('ORDERS.SRI_ISSUE_INVOICE') }
     );
+  }
+
+  sendSriInvoiceEmail(order: Order): void {
+    const onFile = order.billing_customer?.email || null;
+    const email = onFile || (window.prompt(this.translate.instant('ORDERS.SRI_EMAIL_PROMPT')) || '').trim();
+    if (!email) return;
+    this.sendingSriInvoiceEmail.set(true);
+    this.api.sendSriInvoiceEmail(order.id, email).subscribe({
+      next: (comp) => {
+        this.sendingSriInvoiceEmail.set(false);
+        this.showToast(this.translate.instant('ORDERS.SRI_EMAIL_SENT'), 'success');
+        this.orders.update(list => list.map(o => o.id === order.id ? { ...o, sri_comprobante: comp } : o));
+        if (this.editOrder()?.id === order.id) {
+          this.editOrder.set({ ...order, sri_comprobante: comp });
+        }
+      },
+      error: (err: { error?: { detail?: unknown } }) => {
+        this.sendingSriInvoiceEmail.set(false);
+        this.showToast(this.fiscalIssueErrorMessage(err), 'error');
+      },
+    });
   }
 
   private pollSriInvoiceStatus(orderId: number, comp: SriComprobantePublic, attempt = 0): void {
