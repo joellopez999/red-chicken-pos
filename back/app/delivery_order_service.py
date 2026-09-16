@@ -422,6 +422,7 @@ def create_satisfecho_delivery_order(
     courier_user_id: int | None = None,
     notify_kitchen: bool = True,
     delivery_fee_cents: int | None = None,
+    require_address: bool = True,
 ) -> tuple[models.Order | None, dict]:
     """
     Create a first-party Satisfecho Delivery order (no marketplace integration, no table).
@@ -429,9 +430,12 @@ def create_satisfecho_delivery_order(
 
     When notify_kitchen is False (public checkout before pay), skip WS publish and
     inventory deduct until payment confirmation calls publish_satisfecho_delivery_order.
+
+    require_address: False lets staff create the order with the address filled in later
+    (e.g. taken over the phone); public guest checkout always passes the default True.
     """
     address = (delivery_address or "").strip()
-    if not address:
+    if require_address and not address:
         return None, {"status": "error", "detail": "delivery_address_required"}
 
     if courier_user_id is not None:

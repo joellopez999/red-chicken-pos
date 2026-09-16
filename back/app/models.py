@@ -257,6 +257,19 @@ class Tenant(SQLModel, table=True):
     tse_serial_number: str | None = Field(default=None, max_length=128)
     tse_signature_counter: int = Field(default=1)
 
+    # Ecuador SRI electronic invoicing (comprobantes electrónicos) — see docs/0075-sri-ecuador-invoicing.md
+    sri_mode: str = Field(default="off", max_length=16)  # off | pruebas | produccion
+    sri_ruc: str | None = Field(default=None, max_length=13)
+    sri_razon_social: str | None = Field(default=None, max_length=300)
+    sri_nombre_comercial: str | None = Field(default=None, max_length=300)
+    sri_direccion_matriz: str | None = Field(default=None, max_length=300)
+    sri_establecimiento: str = Field(default="001", max_length=3)
+    sri_punto_emision: str = Field(default="001", max_length=3)
+    sri_obligado_contabilidad: bool = Field(default=False)
+    sri_secuencial_factura: int = Field(default=1)
+    sri_certificate_filename: str | None = Field(default=None, max_length=255)  # relative path under uploads/{tenant_id}/sri/
+    sri_certificate_password: str | None = Field(default=None, max_length=512)
+
     # Platform SaaS subscription (Satisfecho paywall — not restaurant guest payments)
     # none | trialing | active | canceled | past_due | grandfathered
     saas_subscription_status: str = Field(default="grandfathered", max_length=32)
@@ -1152,6 +1165,31 @@ class TseTransaction(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class SriComprobante(SQLModel, table=True):
+    """Ecuador SRI electronic invoice (comprobante electrónico) row for an order — see docs/0075-sri-ecuador-invoicing.md."""
+
+    __tablename__ = "sri_comprobante"
+
+    id: int | None = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    order_id: int = Field(foreign_key="order.id", index=True)
+    tipo_comprobante: str = Field(default="01", max_length=2)  # 01 = factura (Tabla 3)
+    ambiente: int = Field(default=1)  # 1 = pruebas, 2 = producción (Tabla 4)
+    clave_acceso: str = Field(max_length=49, index=True, unique=True)
+    secuencial: str = Field(max_length=9)
+    # PPR (en procesamiento) | RECIBIDA | DEVUELTA | AUT (autorizado) | NAT (no autorizado)
+    estado: str = Field(default="PPR", max_length=16)
+    xml_firmado: str = Field(default="", sa_column=Column(Text, nullable=False))
+    xml_autorizado: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
+    numero_autorizacion: str | None = Field(default=None, max_length=49)
+    fecha_autorizacion: datetime | None = Field(default=None)
+    mensajes_error: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    amount_cents: int = Field(default=0)
+    submitted_at: datetime | None = Field(default=None)
+    last_checked_at: datetime | None = Field(default=None)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class Order(TenantMixin, table=True):
     id: int | None = Field(default=None, primary_key=True)
     # Null when soft-deleted and unlinked, or legacy cleanup; active orders always have a table.
@@ -1911,6 +1949,16 @@ class TenantUpdate(SQLModel):
     tse_mode: str | None = Field(default=None, max_length=16)
     tse_client_id: str | None = Field(default=None, max_length=128)
     tse_api_secret: str | None = Field(default=None, max_length=512)
+
+    # Ecuador SRI electronic invoicing
+    sri_mode: str | None = Field(default=None, max_length=16)
+    sri_ruc: str | None = Field(default=None, max_length=13)
+    sri_razon_social: str | None = Field(default=None, max_length=300)
+    sri_nombre_comercial: str | None = Field(default=None, max_length=300)
+    sri_direccion_matriz: str | None = Field(default=None, max_length=300)
+    sri_establecimiento: str | None = Field(default=None, max_length=3)
+    sri_punto_emision: str | None = Field(default=None, max_length=3)
+    sri_obligado_contabilidad: bool | None = None
 
 
 class TenantProductCreate(SQLModel):

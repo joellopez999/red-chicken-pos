@@ -1437,7 +1437,70 @@ import { MAX_IMAGE_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_MB } from '../shared/image-upl
                     />
                     <p class="hint">{{ 'SETTINGS.TSE_API_SECRET_HINT' | translate }}</p>
                   </div>
-                  
+
+                  <div class="divider"></div>
+                  <h3>{{ 'SETTINGS.SRI_TITLE' | translate }}</h3>
+                  <p class="hint">{{ 'SETTINGS.SRI_DESC' | translate }}</p>
+                  <div class="form-group">
+                    <label for="sri_mode">{{ 'SETTINGS.SRI_MODE' | translate }}</label>
+                    <select id="sri_mode" class="form-select" [(ngModel)]="formData.sri_mode" name="sri_mode">
+                      <option value="off">{{ 'SETTINGS.SRI_MODE_OFF' | translate }}</option>
+                      <option value="pruebas">{{ 'SETTINGS.SRI_MODE_PRUEBAS' | translate }}</option>
+                      <option value="produccion">{{ 'SETTINGS.SRI_MODE_PRODUCCION' | translate }}</option>
+                    </select>
+                    <p class="hint">{{ 'SETTINGS.SRI_MODE_HINT' | translate }}</p>
+                  </div>
+                  <div class="form-group">
+                    <label for="sri_ruc">{{ 'SETTINGS.SRI_RUC' | translate }}</label>
+                    <input type="text" id="sri_ruc" [(ngModel)]="formData.sri_ruc" name="sri_ruc" maxlength="13" class="input-medium" autocomplete="off" />
+                  </div>
+                  <div class="form-group">
+                    <label for="sri_razon_social">{{ 'SETTINGS.SRI_RAZON_SOCIAL' | translate }}</label>
+                    <input type="text" id="sri_razon_social" [(ngModel)]="formData.sri_razon_social" name="sri_razon_social" maxlength="300" />
+                  </div>
+                  <div class="form-group">
+                    <label for="sri_nombre_comercial">{{ 'SETTINGS.SRI_NOMBRE_COMERCIAL' | translate }}</label>
+                    <input type="text" id="sri_nombre_comercial" [(ngModel)]="formData.sri_nombre_comercial" name="sri_nombre_comercial" maxlength="300" />
+                  </div>
+                  <div class="form-group">
+                    <label for="sri_direccion_matriz">{{ 'SETTINGS.SRI_DIRECCION_MATRIZ' | translate }}</label>
+                    <input type="text" id="sri_direccion_matriz" [(ngModel)]="formData.sri_direccion_matriz" name="sri_direccion_matriz" maxlength="300" />
+                  </div>
+                  <div class="form-group">
+                    <label for="sri_establecimiento">{{ 'SETTINGS.SRI_ESTABLECIMIENTO' | translate }}</label>
+                    <input type="text" id="sri_establecimiento" [(ngModel)]="formData.sri_establecimiento" name="sri_establecimiento" maxlength="3" class="input-small" />
+                  </div>
+                  <div class="form-group">
+                    <label for="sri_punto_emision">{{ 'SETTINGS.SRI_PUNTO_EMISION' | translate }}</label>
+                    <input type="text" id="sri_punto_emision" [(ngModel)]="formData.sri_punto_emision" name="sri_punto_emision" maxlength="3" class="input-small" />
+                  </div>
+                  <div class="form-group checkbox-row">
+                    <label class="switch">
+                      <input type="checkbox" [(ngModel)]="formData.sri_obligado_contabilidad" name="sri_obligado_contabilidad">
+                      <span class="slider round"></span>
+                    </label>
+                    <span>{{ 'SETTINGS.SRI_OBLIGADO_CONTABILIDAD' | translate }}</span>
+                  </div>
+                  <div class="form-group">
+                    <label>{{ 'SETTINGS.SRI_CERTIFICATE' | translate }}</label>
+                    <div class="upload-controls">
+                      <input type="file" id="sri-cert-upload" accept=".p12,.pfx" (change)="onSriCertificateSelected($event)" hidden />
+                      <label for="sri-cert-upload" class="btn btn-secondary">{{ 'SETTINGS.SRI_CERTIFICATE_UPLOAD' | translate }}</label>
+                      @if (sriCertificateSelectedName()) {
+                        <span class="hint">{{ sriCertificateSelectedName() }}</span>
+                      }
+                    </div>
+                    <input
+                      type="password"
+                      [(ngModel)]="sriCertificatePasswordInput"
+                      name="sri_certificate_password"
+                      [placeholder]="'SETTINGS.SRI_CERTIFICATE_PASSWORD' | translate"
+                      autocomplete="off"
+                      class="input-medium"
+                    />
+                    <p class="hint">{{ 'SETTINGS.SRI_CERTIFICATE_HINT' | translate }}</p>
+                  </div>
+
                   <div class="form-group checkbox-row">
                     <label class="switch">
                       <input type="checkbox" [(ngModel)]="formData.immediate_payment_required" name="immediate_payment_required">
@@ -3128,6 +3191,9 @@ export class SettingsComponent implements OnInit, OnDestroy {
   logoFile: File | null = null;
   headerBackgroundPreview = signal<string | null>(null);
   headerBackgroundFile: File | null = null;
+  sriCertificateFile: File | null = null;
+  sriCertificatePasswordInput = '';
+  sriCertificateSelectedName = signal<string | null>(null);
 
   /** Google Review auto-hint signals (GitHub #176) */
   publicGoogleReviewAutoHint = signal(false);
@@ -3307,6 +3373,14 @@ export class SettingsComponent implements OnInit, OnDestroy {
     tse_mode: 'off' as 'off' | 'test' | 'live',
     tse_client_id: null as string | null,
     tse_api_secret: null as string | null,
+    sri_mode: 'off' as 'off' | 'pruebas' | 'produccion',
+    sri_ruc: null as string | null,
+    sri_razon_social: null as string | null,
+    sri_nombre_comercial: null as string | null,
+    sri_direccion_matriz: null as string | null,
+    sri_establecimiento: '001',
+    sri_punto_emision: '001',
+    sri_obligado_contabilidad: false,
   };
 
   allTimezones: string[] = [];
@@ -3442,7 +3516,19 @@ export class SettingsComponent implements OnInit, OnDestroy {
             settings.tse_mode === 'test' || settings.tse_mode === 'live' ? settings.tse_mode : 'off',
           tse_client_id: settings.tse_client_id?.trim() || null,
           tse_api_secret: null,
+          sri_mode:
+            settings.sri_mode === 'pruebas' || settings.sri_mode === 'produccion'
+              ? settings.sri_mode
+              : 'off',
+          sri_ruc: settings.sri_ruc?.trim() || null,
+          sri_razon_social: settings.sri_razon_social?.trim() || null,
+          sri_nombre_comercial: settings.sri_nombre_comercial?.trim() || null,
+          sri_direccion_matriz: settings.sri_direccion_matriz?.trim() || null,
+          sri_establecimiento: settings.sri_establecimiento?.trim() || '001',
+          sri_punto_emision: settings.sri_punto_emision?.trim() || '001',
+          sri_obligado_contabilidad: settings.sri_obligado_contabilidad ?? false,
         };
+        this.sriCertificateSelectedName.set(settings.sri_certificate_filename ? 'certificado.p12' : null);
         this.clockQrLastToken.set(null);
         this.clockQrTokenLoading.set(false);
         if (settings.clock_qr_active && settings.clock_qr_downloadable) {
@@ -4184,6 +4270,20 @@ export class SettingsComponent implements OnInit, OnDestroy {
     }
   }
 
+  onSriCertificateSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input?.files?.[0];
+    input.value = '';
+    if (!file) return;
+    if (file.size > 1024 * 1024) {
+      this.error.set('El certificado es demasiado grande (máx. 1MB).');
+      return;
+    }
+    this.sriCertificateFile = file;
+    this.sriCertificateSelectedName.set(file.name);
+    this.error.set(null);
+  }
+
   removeLogo() {
     this.logoFile = null;
     this.logoPreview.set(null);
@@ -4291,6 +4391,25 @@ export class SettingsComponent implements OnInit, OnDestroy {
     this.clearSuccessDismissTimer();
     this.success.set(null);
 
+    const doSriCertUpload = () => {
+      if (this.sriCertificateFile && this.sriCertificatePasswordInput) {
+        this.api.uploadSriCertificate(this.sriCertificateFile, this.sriCertificatePasswordInput).subscribe({
+          next: () => {
+            this.sriCertificateFile = null;
+            this.sriCertificatePasswordInput = '';
+            this.updateSettings();
+          },
+          error: (err) => {
+            this.error.set(err?.error?.detail || 'Failed to upload SRI certificate. Please try again.');
+            this.saving.set(false);
+            console.error('Error uploading SRI certificate:', err);
+          }
+        });
+      } else {
+        this.updateSettings();
+      }
+    };
+
     const doLogoUpload = () => {
       if (this.logoFile) {
         this.api.uploadTenantLogo(this.logoFile).subscribe({
@@ -4298,7 +4417,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
             this.settings.set(updatedSettings);
             this.logoFile = null;
             this.logoPreview.set(null);
-            this.updateSettings();
+            doSriCertUpload();
           },
           error: (err) => {
             this.error.set('Failed to upload logo. Please try again.');
@@ -4307,7 +4426,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
           }
         });
       } else {
-        this.updateSettings();
+        doSriCertUpload();
       }
     };
 

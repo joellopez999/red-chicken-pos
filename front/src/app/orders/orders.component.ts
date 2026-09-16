@@ -13,6 +13,7 @@ import {
   OrderLineModifiers,
   FiscalInvoicePublic,
   TseTransactionPublic,
+  SriComprobantePublic,
   Product,
   Tax,
   User,
@@ -141,6 +142,14 @@ ModuleRegistry.registerModules([
               <div class="order-grid">
                 @for (order of activeOrders(); track order.id) {
                   <div class="order-card" [id]="'order-card-' + order.id" [class]="'status-' + order.status + (orderCardHasOpenStatusDropdown(order.id) ? ' status-dropdown-open' : '')">
+                    @if (canUpdateStatus() && order.status !== 'cancelled' && order.status !== 'paid' && order.status !== 'completed') {
+                      <button type="button" class="btn-cancel-corner" (click)="cancelOrder(order)" [title]="'ORDERS.CANCEL_ORDER' | translate">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                          <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+                        </svg>
+                      </button>
+                    }
                     <div class="order-header">
                       <div class="order-header-main">
                         <span class="order-id">#{{ order.id }}</span>
@@ -426,18 +435,22 @@ ModuleRegistry.registerModules([
                                   </button>
                                 </div>
                               }
+                              @if (canDeleteOrder()) {
+                                <div class="dropdown-section">
+                                  <button
+                                    class="dropdown-item danger"
+                                    (click)="deleteOrder(order)">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                      <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                                      <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+                                    </svg>
+                                    {{ 'ORDERS.DELETE_ORDER' | translate }}
+                                  </button>
+                                </div>
+                              }
                             </div>
                           }
                         </div>
-                        @if (canDeleteOrder()) {
-                          <button type="button" class="btn btn-delete-order" (click)="deleteOrder(order)" [title]="'ORDERS.DELETE_ORDER' | translate">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                              <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-                              <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
-                            </svg>
-                            {{ 'ORDERS.DELETE_ORDER' | translate }}
-                          </button>
-                        }
                         @if (order.table_id != null && order.table_token) {
                           <button type="button" class="btn btn-menu-link" (click)="openMenuForOrder(order)" [title]="'ORDERS.OPEN_MENU_LINK' | translate">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -475,6 +488,14 @@ ModuleRegistry.registerModules([
                 <div class="order-grid">
                   @for (order of notPaidOrders(); track order.id) {
                     <div class="order-card" [id]="'order-card-' + order.id" [class]="'status-' + order.status + (orderCardHasOpenStatusDropdown(order.id) ? ' status-dropdown-open' : '')">
+                      @if (canUpdateStatus() && order.status !== 'cancelled' && order.status !== 'paid' && order.status !== 'completed') {
+                        <button type="button" class="btn-cancel-corner" (click)="cancelOrder(order)" [title]="'ORDERS.CANCEL_ORDER' | translate">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                            <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+                          </svg>
+                        </button>
+                      }
                       <div class="order-header">
                         <div class="order-header-main">
                           <span class="order-id">#{{ order.id }}</span>
@@ -756,18 +777,22 @@ ModuleRegistry.registerModules([
                                     </button>
                                   </div>
                                 }
+                                @if (canDeleteOrder()) {
+                                  <div class="dropdown-section">
+                                    <button
+                                      class="dropdown-item danger"
+                                      (click)="deleteOrder(order)">
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                                        <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+                                      </svg>
+                                      {{ 'ORDERS.DELETE_ORDER' | translate }}
+                                    </button>
+                                  </div>
+                                }
                               </div>
                             }
                           </div>
-                          @if (canDeleteOrder()) {
-                            <button type="button" class="btn btn-delete-order" (click)="deleteOrder(order)" [title]="'ORDERS.DELETE_ORDER' | translate">
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-                                <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
-                              </svg>
-                              {{ 'ORDERS.DELETE_ORDER' | translate }}
-                            </button>
-                          }
                           @if (order.table_id != null && order.table_token) {
                             <button type="button" class="btn btn-menu-link" (click)="openMenuForOrder(order)" [title]="'ORDERS.OPEN_MENU_LINK' | translate">
                               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -805,6 +830,14 @@ ModuleRegistry.registerModules([
                 <div class="order-grid">
                   @for (order of deliveryOrders(); track order.id) {
                     <div class="order-card" [id]="'order-card-' + order.id" [class]="'status-' + order.status + (orderCardHasOpenStatusDropdown(order.id) ? ' status-dropdown-open' : '')">
+                      @if (canUpdateStatus() && order.status !== 'cancelled' && order.status !== 'paid' && order.status !== 'completed') {
+                        <button type="button" class="btn-cancel-corner" (click)="cancelOrder(order)" [title]="'ORDERS.CANCEL_ORDER' | translate">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                            <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+                          </svg>
+                        </button>
+                      }
                       <div class="order-header">
                         <div class="order-header-main">
                           <span class="order-id">#{{ order.id }}</span>
@@ -1043,6 +1076,11 @@ ModuleRegistry.registerModules([
                 <button type="button" class="btn btn-secondary" (click)="saveEditOrderBilling()">{{ 'COMMON.SAVE' | translate }}</button>
                 <button type="button" class="btn btn-secondary" (click)="printEditOrderInvoice()">{{ 'ORDERS.PRINT_INVOICE' | translate }}</button>
                 <button type="button" class="btn btn-secondary" (click)="printEditOrderKitchen()">{{ 'ORDERS.PRINT_KITCHEN' | translate }}</button>
+                @if (sriInvoicingEnabled()) {
+                  <button type="button" class="btn btn-secondary" (click)="issueSriInvoiceForEditOrder()" [disabled]="issuingSriInvoice()">
+                    {{ issuingSriInvoice() ? ('ORDERS.SRI_ISSUING' | translate) : ('ORDERS.SRI_ISSUE_INVOICE' | translate) }}
+                  </button>
+                }
                 @if (order.status !== 'paid' && order.status !== 'cancelled' && canMarkPaid()) {
                   <button type="button" class="btn btn-primary" (click)="markEditOrderAsPaid(order)">{{ 'ORDERS.MARK_AS_PAID' | translate }}</button>
                 }
@@ -1068,7 +1106,7 @@ ModuleRegistry.registerModules([
               </div>
               <div class="modal-actions modal-actions-top">
                 <button type="button" class="btn btn-secondary" (click)="cancelCreateDeliveryModal()">{{ 'COMMON.CANCEL' | translate }}</button>
-                <button type="button" class="btn btn-primary" (click)="submitCreateDelivery()" [disabled]="creatingDelivery() || !deliveryFormAddress.trim() || deliveryDraftItems.length === 0">
+                <button type="button" class="btn btn-primary" (click)="submitCreateDelivery()" [disabled]="creatingDelivery() || !deliveryFormCustomerName.trim() || deliveryDraftItems.length === 0">
                   {{ creatingDelivery() ? ('COMMON.LOADING' | translate) : ('ORDERS.CREATE_DELIVERY' | translate) }}
                 </button>
               </div>
@@ -1076,16 +1114,16 @@ ModuleRegistry.registerModules([
                 <div class="delivery-create-info">
                   <p class="modal-hint">{{ 'ORDERS.NEW_DELIVERY_HINT' | translate }}</p>
                   <div class="form-group">
-                    <label for="delivery-address">{{ 'ORDERS.DELIVERY_ADDRESS' | translate }} *</label>
-                    <input id="delivery-address" type="text" class="form-input" [(ngModel)]="deliveryFormAddress" name="deliveryAddress" required />
+                    <label for="delivery-customer">{{ 'ORDERS.CUSTOMER' | translate }} *</label>
+                    <input id="delivery-customer" type="text" class="form-input" [(ngModel)]="deliveryFormCustomerName" name="deliveryCustomer" required />
+                  </div>
+                  <div class="form-group">
+                    <label for="delivery-address">{{ 'ORDERS.DELIVERY_ADDRESS' | translate }}</label>
+                    <input id="delivery-address" type="text" class="form-input" [(ngModel)]="deliveryFormAddress" name="deliveryAddress" />
                   </div>
                   <div class="form-group">
                     <label for="delivery-phone">{{ 'ORDERS.DELIVERY_PHONE' | translate }}</label>
                     <input id="delivery-phone" type="tel" class="form-input" [(ngModel)]="deliveryFormPhone" name="deliveryPhone" />
-                  </div>
-                  <div class="form-group">
-                    <label for="delivery-customer">{{ 'ORDERS.CUSTOMER' | translate }}</label>
-                    <input id="delivery-customer" type="text" class="form-input" [(ngModel)]="deliveryFormCustomerName" name="deliveryCustomer" />
                   </div>
                   <div class="form-group">
                     <label for="delivery-notes">{{ 'ORDERS.ORDER_NOTES' | translate }}</label>
@@ -1773,6 +1811,7 @@ ModuleRegistry.registerModules([
       align-items: center;
       gap: var(--space-3);
       padding: var(--space-4);
+      padding-right: 44px; /* keep header text clear of .btn-cancel-corner */
       border-bottom: 1px solid var(--color-border);
       margin-bottom: var(--space-3);
     }
@@ -1806,14 +1845,19 @@ ModuleRegistry.registerModules([
     .order-hub-badge.prepared {
       color: #166534; background: rgba(22, 163, 74, 0.12);
     }
-    .btn-delete-order {
-      display: inline-flex; align-items: center; gap: var(--space-2);
-      padding: var(--space-2) var(--space-3); min-height: 44px;
-      border-radius: 14px; font-size: 0.875rem; font-weight: 500;
-      border: 1px solid var(--color-border); background: var(--color-surface);
+    .btn-cancel-corner {
+      position: absolute;
+      top: var(--space-2);
+      right: var(--space-2);
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px; padding: 0;
+      border-radius: 8px;
+      border: 1px solid transparent; background: transparent;
       color: var(--color-text-muted); cursor: pointer; transition: all 0.15s;
+      z-index: 2;
     }
-    .btn-delete-order:hover { background: rgba(220, 38, 38, 0.08); color: var(--color-error, #dc2626); border-color: rgba(220, 38, 38, 0.3); }
+    .btn-cancel-corner:hover { background: rgba(220, 38, 38, 0.08); color: var(--color-error, #dc2626); border-color: rgba(220, 38, 38, 0.3); }
+    .dropdown-item.danger { color: var(--color-error, #dc2626); }
     .order-id { font-weight: 600; color: var(--color-text); }
     .order-table { color: var(--color-text-muted); font-size: 0.875rem; }
     .order-table-group { color: var(--color-text-muted); font-size: 0.75rem; margin-left: 0.35rem; opacity: 0.9; }
@@ -2426,6 +2470,51 @@ ModuleRegistry.registerModules([
     }
     @media (max-width: 720px) {
       .delivery-create-grid { grid-template-columns: 1fr; }
+    }
+    /* Phone: fullscreen with a single scroll container (was nesting .modal + .modal-body scroll,
+       which felt broken when the keyboard was open), stacked add-item row, bigger tap targets. */
+    @media (max-width: 599px) {
+      .modal-delivery-create {
+        max-width: 100%;
+        width: 100%;
+        height: 100%;
+        max-height: 100%;
+        border-radius: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .modal-delivery-create .modal-header,
+      .modal-delivery-create .modal-actions-top {
+        flex-shrink: 0;
+      }
+      .modal-delivery-create .modal-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        max-height: none;
+        overflow-y: auto;
+      }
+      .delivery-items-add-row {
+        flex-wrap: wrap;
+      }
+      .delivery-items-add-row .form-select {
+        flex: 1 1 100%;
+      }
+      .delivery-items-add-row .quantity-input {
+        flex: 1 1 auto;
+        width: auto;
+      }
+      .delivery-items-add-row .form-select,
+      .delivery-items-add-row .quantity-input,
+      .delivery-items-add-row .btn {
+        min-height: 44px;
+      }
+      .delivery-items-table-wrap {
+        overflow-x: auto;
+      }
+      .delivery-items-table .btn-remove-row {
+        padding: var(--space-2);
+      }
     }
     .delivery-create-info .form-group:last-child { margin-bottom: 0; }
     .delivery-create-items {
@@ -3504,12 +3593,12 @@ export class OrdersComponent implements OnInit, OnDestroy {
   }
 
   submitCreateDelivery(): void {
-    const address = this.deliveryFormAddress.trim();
-    if (!address || this.deliveryDraftItems.length === 0) return;
+    const customerName = this.deliveryFormCustomerName.trim();
+    if (!customerName || this.deliveryDraftItems.length === 0) return;
     this.creatingDelivery.set(true);
     this.api.createSatisfechoDeliveryOrder({
       items: this.deliveryDraftItems.map(l => ({ product_id: l.product_id, quantity: l.quantity })),
-      delivery_address: address,
+      delivery_address: this.deliveryFormAddress.trim(),
       customer_phone: this.deliveryFormPhone.trim() || null,
       customer_name: this.deliveryFormCustomerName.trim() || null,
       notes: this.deliveryFormNotes.trim() || null,
@@ -4131,6 +4220,52 @@ export class OrdersComponent implements OnInit, OnDestroy {
     return m === 'test' || m === 'live';
   }
 
+  issuingSriInvoice = signal(false);
+
+  sriInvoicingEnabled(): boolean {
+    const m = this.tenantSettings()?.sri_mode;
+    return m === 'pruebas' || m === 'produccion';
+  }
+
+  issueSriInvoiceForEditOrder(): void {
+    const order = this.editOrder();
+    if (!order) return;
+    this.issuingSriInvoice.set(true);
+    this.api.issueOrderSriInvoice(order.id).subscribe({
+      next: (comp) => this.pollSriInvoiceStatus(order.id, comp),
+      error: (err: { error?: { detail?: unknown } }) => {
+        this.issuingSriInvoice.set(false);
+        this.showToast(this.fiscalIssueErrorMessage(err), 'error');
+      },
+    });
+  }
+
+  private pollSriInvoiceStatus(orderId: number, comp: SriComprobantePublic, attempt = 0): void {
+    if (comp.estado === 'AUT') {
+      this.issuingSriInvoice.set(false);
+      this.showToast(this.translate.instant('ORDERS.SRI_AUTHORIZED'), 'success');
+      window.open(this.api.sriInvoiceRideUrl(orderId), '_blank');
+      return;
+    }
+    if (comp.estado === 'NAT' || comp.estado === 'DEVUELTA') {
+      this.issuingSriInvoice.set(false);
+      const msg = comp.mensajes_error?.mensajes?.[0]?.mensaje || comp.estado;
+      this.showToast(`${this.translate.instant('ORDERS.SRI_REJECTED')}: ${msg}`, 'error');
+      return;
+    }
+    if (attempt >= 15) {
+      this.issuingSriInvoice.set(false);
+      this.showToast(this.translate.instant('ORDERS.SRI_STILL_PROCESSING'), 'success');
+      return;
+    }
+    setTimeout(() => {
+      this.api.getOrderSriInvoice(orderId).subscribe({
+        next: (updated) => this.pollSriInvoiceStatus(orderId, updated, attempt + 1),
+        error: () => this.issuingSriInvoice.set(false),
+      });
+    }, 2000);
+  }
+
   private tseEnabled(): boolean {
     const m = this.tenantSettings()?.tse_mode;
     return m === 'test' || m === 'live';
@@ -4696,6 +4831,25 @@ export class OrdersComponent implements OnInit, OnDestroy {
         });
       },
       { confirmText: 'Completar pedido' }
+    );
+  }
+
+  cancelOrder(order: Order) {
+    this.statusDropdownOpen.set(null);
+    this.openConfirmModal(
+      this.translate.instant('ORDERS.CANCEL_ORDER_CONFIRM'),
+      () => {
+        this.api.updateOrderStatus(order.id, 'cancelled').subscribe({
+          next: () => {
+            this.orders.update(list =>
+              list.map(o => o.id === order.id ? { ...o, status: 'cancelled' } : o)
+            );
+            this.showToast(this.translate.instant('ORDERS.CANCEL_ORDER_DONE'), 'success');
+          },
+          error: () => this.showToast(this.translate.instant('ORDERS.CANCEL_ORDER_FAILED'), 'error')
+        });
+      },
+      { confirmText: this.translate.instant('ORDERS.CANCEL_ORDER') }
     );
   }
 

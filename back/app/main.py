@@ -25,7 +25,7 @@ from uuid import uuid4
 from PIL import Image
 import redis
 import stripe
-from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, UploadFile, File, status, Query, Request
+from fastapi import BackgroundTasks, Body, Depends, FastAPI, HTTPException, UploadFile, File, Form, status, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
 from fastapi.security import OAuth2PasswordRequestForm
@@ -75,7 +75,11 @@ from .fiscal_invoice_service import (
     fiscal_invoice_public_dict,
     get_fiscal_alta,
     issue_or_get_fiscal_invoice,
+    order_fiscal_amount_cents,
 )
+from .sri_invoice_service import generar_clave_acceso, generar_xml_factura
+from .sri_providers import enviar_recepcion
+from .sri_signing import load_p12, sign_factura_xml
 from .tse_service import (
     assert_tse_mode_allowed,
     dsfinvk_export_stub,
@@ -326,7 +330,27 @@ async def _app_lifespan(app: FastAPI):
     app.state.social_publish_task = social_task
     logger.info("Social publish worker started")
 
+    from .sri_authorization_worker import sri_authorization_worker_loop
+
+    stop_sri = asyncio.Event()
+    sri_task = asyncio.create_task(sri_authorization_worker_loop(stop=stop_sri))
+    app.state.sri_authorization_stop = stop_sri
+    app.state.sri_authorization_task = sri_task
+    logger.info("SRI authorization worker started")
+
     yield
+
+    stop_sri_ev = getattr(app.state, "sri_authorization_stop", None)
+    task_sri = getattr(app.state, "sri_authorization_task", None)
+    if stop_sri_ev:
+        stop_sri_ev.set()
+    if task_sri and not task_sri.done():
+        task_sri.cancel()
+        try:
+            await task_sri
+        except asyncio.CancelledError:
+            pass
+    logger.info("SRI authorization worker stopped")
 
     stop_soc = getattr(app.state, "social_publish_stop", None)
     task_soc = getattr(app.state, "social_publish_task", None)
@@ -550,6 +574,14 @@ def deny_public_staff_contract_uploads(tenant_id: int, filename: str):
         status_code=403,
         detail="Staff contract files are not available at this URL",
     )
+
+
+@app.get("/uploads/{tenant_id}/sri/{filename}", include_in_schema=False)
+def deny_public_sri_certificate_uploads(tenant_id: int, filename: str):
+    """The SRI .p12 certificate is only ever read server-side for signing — never served."""
+    if "/" in filename or "\\" in filename or filename.startswith("."):
+        raise HTTPException(status_code=404, detail="Invalid filename")
+    raise HTTPException(status_code=403, detail="Certificate files are not available at this URL")
 
 
 # Mount static files for serving images (fallback for any other uploads paths)
@@ -4000,6 +4032,8 @@ def get_tenant_settings(
     # Don't expose SMTP password; indicate if configured
     if tenant_dict.get("smtp_password"):
         tenant_dict["smtp_password"] = "********"
+    if tenant_dict.get("sri_certificate_password"):
+        tenant_dict["sri_certificate_password"] = "********"
 
     apply_tenant_currency_api_dict(tenant_dict)
     tenant_dict["ui_modules"] = resolve_tenant_ui_modules(tenant.ui_modules)
@@ -4559,6 +4593,8 @@ def update_tenant_settings(
     # Don't expose SMTP password; indicate if configured
     if tenant_dict.get("smtp_password"):
         tenant_dict["smtp_password"] = "********"
+    if tenant_dict.get("sri_certificate_password"):
+        tenant_dict["sri_certificate_password"] = "********"
 
     apply_tenant_currency_api_dict(tenant_dict)
     tenant_dict["ui_modules"] = resolve_tenant_ui_modules(tenant.ui_modules)
@@ -4590,6 +4626,60 @@ def regenerate_tenant_clock_qr(
     session.add(tenant)
     session.commit()
     return {"token": token, "clock_qr_active": True, "clock_qr_downloadable": True}
+
+
+MAX_SRI_CERTIFICATE_BYTES = 1 * 1024 * 1024
+
+
+@app.post("/tenant/sri/certificate")
+@limiter.limit(
+    f"{getattr(settings, 'rate_limit_admin_per_minute', 30)}/minute",
+    key_func=_rate_limit_key_user,
+)
+async def upload_sri_certificate(
+    request: Request,
+    file: Annotated[UploadFile, File()],
+    password: Annotated[str, Form()],
+    current_user: Annotated[models.User, Depends(require_permission(Permission.SETTINGS_UPDATE))],
+    session: Session = Depends(get_session),
+) -> dict:
+    """Upload the .p12 certificate used to sign SRI comprobantes electrónicos.
+
+    Stored under uploads/{tenant_id}/sri/ (never served — see deny_public_sri_certificate_uploads);
+    only read server-side when signing. The password is stored so the background
+    authorization worker and future issuances don't need it re-entered each time.
+    """
+    tenant = session.exec(select(models.Tenant).where(models.Tenant.id == current_user.tenant_id)).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    contents = await file.read()
+    if len(contents) > MAX_SRI_CERTIFICATE_BYTES:
+        raise HTTPException(status_code=400, detail="File too large (max 1MB)")
+    if not password.strip():
+        raise HTTPException(status_code=400, detail="Certificate password is required")
+
+    try:
+        load_p12(contents, password)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Certificado o contraseña inválidos")
+
+    tenant_dir = UPLOADS_DIR / str(current_user.tenant_id) / "sri"
+    tenant_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid4().hex}.p12"
+    (tenant_dir / filename).write_bytes(contents)
+
+    old_filename = tenant.sri_certificate_filename
+    tenant.sri_certificate_filename = filename
+    tenant.sri_certificate_password = password
+    session.add(tenant)
+    session.commit()
+
+    if old_filename:
+        old_path = UPLOADS_DIR / str(current_user.tenant_id) / "sri" / old_filename
+        old_path.unlink(missing_ok=True)
+
+    return {"status": "ok", "uploaded_at": datetime.now(timezone.utc).isoformat()}
 
 
 @app.get("/tenant/settings/clock-qr/token")
@@ -5382,6 +5472,8 @@ async def upload_tenant_logo(
     # Don't expose SMTP password; indicate if configured
     if tenant_dict.get("smtp_password"):
         tenant_dict["smtp_password"] = "********"
+    if tenant_dict.get("sri_certificate_password"):
+        tenant_dict["sri_certificate_password"] = "********"
 
     return tenant_dict
 
@@ -5431,6 +5523,8 @@ def delete_tenant_logo(
         )
     if tenant_dict.get("smtp_password"):
         tenant_dict["smtp_password"] = "********"
+    if tenant_dict.get("sri_certificate_password"):
+        tenant_dict["sri_certificate_password"] = "********"
     return JSONResponse(content=tenant_dict)
 
 
@@ -5504,6 +5598,8 @@ async def upload_tenant_header_background(
         )
     if tenant_dict.get("smtp_password"):
         tenant_dict["smtp_password"] = "********"
+    if tenant_dict.get("sri_certificate_password"):
+        tenant_dict["sri_certificate_password"] = "********"
     return JSONResponse(content=tenant_dict)
 
 
@@ -5549,6 +5645,8 @@ def delete_tenant_header_background(
         )
     if tenant_dict.get("smtp_password"):
         tenant_dict["smtp_password"] = "********"
+    if tenant_dict.get("sri_certificate_password"):
+        tenant_dict["sri_certificate_password"] = "********"
     return JSONResponse(content=tenant_dict)
 
 
@@ -13645,8 +13743,9 @@ def create_satisfecho_delivery_order_endpoint(
     if not body.items:
         raise HTTPException(status_code=400, detail="Order must have at least one item")
     address = (body.delivery_address or "").strip()
-    if not address:
-        raise HTTPException(status_code=400, detail="delivery_address is required")
+    customer_name = (body.customer_name or "").strip()
+    if not customer_name:
+        raise HTTPException(status_code=400, detail="customer_name is required")
 
     phone = None
     if body.customer_phone and body.customer_phone.strip():
@@ -13667,9 +13766,10 @@ def create_satisfecho_delivery_order_endpoint(
         lines=lines,
         delivery_address=address,
         customer_phone=phone,
-        customer_name=body.customer_name,
+        customer_name=customer_name,
         notes=body.notes,
         courier_user_id=body.courier_user_id,
+        require_address=False,
     )
     if not order:
         detail = outcome.get("detail", "create_failed")
@@ -13989,6 +14089,8 @@ def update_order_status(
 
     if status_update.status == models.OrderStatus.cancelled:
         assert_order_fiscally_mutable(session, current_user.tenant_id, order.id)
+        order.cancelled_at = datetime.now(timezone.utc)
+        order.cancelled_by = "staff"
 
     # Update order status
     order.status = status_update.status
@@ -14553,6 +14655,173 @@ def issue_order_fiscal_invoice(
     session.commit()
     session.refresh(fi)
     return fiscal_invoice_public_dict(fi)
+
+
+def sri_comprobante_public_dict(row: models.SriComprobante) -> dict:
+    return {
+        "id": row.id,
+        "order_id": row.order_id,
+        "tipo_comprobante": row.tipo_comprobante,
+        "ambiente": row.ambiente,
+        "clave_acceso": row.clave_acceso,
+        "secuencial": row.secuencial,
+        "estado": row.estado,
+        "numero_autorizacion": row.numero_autorizacion,
+        "fecha_autorizacion": row.fecha_autorizacion.isoformat() if row.fecha_autorizacion else None,
+        "mensajes_error": row.mensajes_error,
+        "amount_cents": row.amount_cents,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+@app.get("/orders/{order_id}/sri-invoice")
+def get_order_sri_invoice(
+    order_id: int,
+    current_user: Annotated[models.User, Depends(require_permission(Permission.ORDER_READ))],
+    session: Session = Depends(get_session),
+) -> dict:
+    """Return persisted SRI comprobante status for an order (tenant-scoped); poll until estado is AUT/NAT."""
+    order = session.exec(
+        select(models.Order).where(
+            models.Order.id == order_id,
+            models.Order.tenant_id == current_user.tenant_id,
+        )
+    ).first()
+    if not order or order.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    row = session.exec(
+        select(models.SriComprobante).where(
+            models.SriComprobante.order_id == order.id,
+            models.SriComprobante.tenant_id == current_user.tenant_id,
+        )
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="SRI invoice not found")
+    return sri_comprobante_public_dict(row)
+
+
+@app.post("/orders/{order_id}/sri-invoice/issue")
+def issue_order_sri_invoice(
+    order_id: int,
+    current_user: Annotated[models.User, Depends(require_permission(Permission.ORDER_READ))],
+    session: Session = Depends(get_session),
+) -> dict:
+    """Generate, sign (XAdES-BES) and submit (Recepción) a factura for the order.
+    Idempotent per order. Authorization is asynchronous — the background worker
+    (sri_authorization_worker.py) polls SRI and flips estado to AUT/NAT; the client
+    should poll GET /orders/{order_id}/sri-invoice until it does.
+    """
+    tenant = session.exec(select(models.Tenant).where(models.Tenant.id == current_user.tenant_id)).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    if tenant.sri_mode == "off":
+        raise HTTPException(status_code=400, detail="La facturación SRI no está habilitada para este negocio")
+    if not tenant.sri_ruc or not tenant.sri_certificate_filename or not tenant.sri_certificate_password:
+        raise HTTPException(status_code=400, detail="Falta configurar RUC y/o certificado SRI en Ajustes")
+
+    order = session.exec(
+        select(models.Order).where(
+            models.Order.id == order_id,
+            models.Order.tenant_id == current_user.tenant_id,
+        )
+    ).first()
+    if not order or order.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    existing = session.exec(
+        select(models.SriComprobante).where(
+            models.SriComprobante.order_id == order.id,
+            models.SriComprobante.tenant_id == current_user.tenant_id,
+        )
+    ).first()
+    if existing:
+        return sri_comprobante_public_dict(existing)
+
+    cert_path = UPLOADS_DIR / str(tenant.id) / "sri" / tenant.sri_certificate_filename
+    if not cert_path.is_file():
+        raise HTTPException(status_code=400, detail="Certificado SRI no encontrado; vuelve a subirlo en Ajustes")
+
+    ambiente = 1 if tenant.sri_mode == "pruebas" else 2
+    secuencial = tenant.sri_secuencial_factura
+    clave_acceso = generar_clave_acceso(
+        fecha_emision=datetime.now(timezone.utc).date(),
+        ruc=tenant.sri_ruc,
+        ambiente=ambiente,
+        establecimiento=tenant.sri_establecimiento,
+        punto_emision=tenant.sri_punto_emision,
+        secuencial=secuencial,
+    )
+    xml_sin_firma = generar_xml_factura(session, tenant, order, clave_acceso, secuencial)
+
+    try:
+        private_key, certificate = load_p12(cert_path.read_bytes(), tenant.sri_certificate_password)
+        xml_firmado = sign_factura_xml(xml_sin_firma, private_key, certificate)
+    except Exception as e:
+        logger.error("SRI signing failed for order %s: %s", order.id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail="No se pudo firmar el comprobante") from e
+
+    try:
+        recepcion = enviar_recepcion(xml_firmado.encode("utf-8"), ambiente)
+    except Exception as e:
+        logger.error("SRI recepción failed for order %s: %s", order.id, e, exc_info=True)
+        raise HTTPException(status_code=502, detail="No se pudo contactar al SRI") from e
+
+    row = models.SriComprobante(
+        tenant_id=tenant.id,
+        order_id=order.id,
+        ambiente=ambiente,
+        clave_acceso=clave_acceso,
+        secuencial=f"{secuencial:09d}",
+        estado=recepcion.estado or "DEVUELTA",
+        xml_firmado=xml_firmado,
+        mensajes_error={"mensajes": recepcion.mensajes} if recepcion.mensajes else None,
+        amount_cents=order_fiscal_amount_cents(session, order),
+        submitted_at=datetime.now(timezone.utc),
+    )
+    session.add(row)
+    # Only advance the sequential counter once SRI accepted the submission for processing
+    # (RECIBIDA) — a DEVUELTA (malformed/rejected) attempt must not burn a sequential number.
+    if recepcion.estado == "RECIBIDA":
+        tenant.sri_secuencial_factura = secuencial + 1
+        session.add(tenant)
+    session.commit()
+    session.refresh(row)
+    return sri_comprobante_public_dict(row)
+
+
+@app.get("/orders/{order_id}/sri-invoice/ride")
+def download_order_sri_ride(
+    order_id: int,
+    current_user: Annotated[models.User, Depends(require_permission(Permission.ORDER_READ))],
+    session: Session = Depends(get_session),
+) -> StreamingResponse:
+    """RIDE (representación impresa) PDF — available once a comprobante has been submitted,
+    even before authorization (marked PENDIENTE in that case)."""
+    order = session.exec(
+        select(models.Order).where(
+            models.Order.id == order_id,
+            models.Order.tenant_id == current_user.tenant_id,
+        )
+    ).first()
+    if not order or order.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    row = session.exec(
+        select(models.SriComprobante).where(
+            models.SriComprobante.order_id == order.id,
+            models.SriComprobante.tenant_id == current_user.tenant_id,
+        )
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="SRI invoice not found")
+
+    from app.sri_invoice_service import generar_ride_pdf
+
+    buffer = generar_ride_pdf(row)
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="factura-{row.clave_acceso}.pdf"'},
+    )
 
 
 @app.post("/orders/{order_id}/fiscal-invoice/cancel")

@@ -1444,6 +1444,22 @@ export interface FiscalInvoicePublic {
   verification_text: string;
 }
 
+/** Ecuador SRI comprobante electrónico status — estado: PPR|RECIBIDA|DEVUELTA|AUT|NAT. */
+export interface SriComprobantePublic {
+  id: number;
+  order_id: number;
+  tipo_comprobante: string;
+  ambiente: number;
+  clave_acceso: string;
+  secuencial: string;
+  estado: string;
+  numero_autorizacion: string | null;
+  fecha_autorizacion: string | null;
+  mensajes_error: { mensajes: Array<{ identificador?: string; mensaje?: string; informacionAdicional?: string }> } | null;
+  amount_cents: number;
+  created_at: string | null;
+}
+
 /** German TSE transaction metadata (KassenSichV preparation — not a certification claim). */
 export interface TseTransactionPublic {
   id: number;
@@ -1817,6 +1833,16 @@ export interface TenantSettings {
   tse_client_id?: string | null;
   tse_api_secret?: string | null;
   tse_serial_number?: string | null;
+  /** Ecuador SRI electronic invoicing: off | pruebas | produccion */
+  sri_mode?: 'off' | 'pruebas' | 'produccion' | string | null;
+  sri_ruc?: string | null;
+  sri_razon_social?: string | null;
+  sri_nombre_comercial?: string | null;
+  sri_direccion_matriz?: string | null;
+  sri_establecimiento?: string | null;
+  sri_punto_emision?: string | null;
+  sri_obligado_contabilidad?: boolean | null;
+  sri_certificate_filename?: string | null;
 }
 
 export interface OrderItemCreate {
@@ -3065,6 +3091,25 @@ export class ApiService {
 
   getOrderFiscalInvoice(orderId: number): Observable<FiscalInvoicePublic> {
     return this.http.get<FiscalInvoicePublic>(`${this.apiUrl}/orders/${orderId}/fiscal-invoice`);
+  }
+
+  issueOrderSriInvoice(orderId: number): Observable<SriComprobantePublic> {
+    return this.http.post<SriComprobantePublic>(`${this.apiUrl}/orders/${orderId}/sri-invoice/issue`, {});
+  }
+
+  getOrderSriInvoice(orderId: number): Observable<SriComprobantePublic> {
+    return this.http.get<SriComprobantePublic>(`${this.apiUrl}/orders/${orderId}/sri-invoice`);
+  }
+
+  sriInvoiceRideUrl(orderId: number): string {
+    return `${this.apiUrl}/orders/${orderId}/sri-invoice/ride`;
+  }
+
+  uploadSriCertificate(file: File, password: string): Observable<{ status: string; uploaded_at: string }> {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('password', password);
+    return this.http.post<{ status: string; uploaded_at: string }>(`${this.apiUrl}/tenant/sri/certificate`, form);
   }
 
   getOrderTseTransaction(orderId: number): Observable<TseTransactionPublic> {
