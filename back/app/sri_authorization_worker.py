@@ -8,11 +8,13 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlmodel import Session, select
 
 from app import models
 from app.db import engine
+from app.sri_invoice_service import generar_ride_pdf
 from app.sri_providers import consultar_autorizacion
 
 logger = logging.getLogger(__name__)
@@ -20,6 +22,20 @@ logger = logging.getLogger(__name__)
 TICK_SECONDS = 20
 PENDING_STATES = ("PPR", "RECIBIDA")
 BATCH_LIMIT = 10
+UPLOADS_DIR = Path(__file__).resolve().parents[1] / "uploads"
+
+
+def ride_pdf_path(tenant_id: int, clave_acceso: str) -> Path:
+    return UPLOADS_DIR / str(tenant_id) / "sri" / "ride" / f"{clave_acceso}.pdf"
+
+
+def _save_ride_pdf(row: models.SriComprobante) -> None:
+    try:
+        path = ride_pdf_path(row.tenant_id, row.clave_acceso)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(generar_ride_pdf(row).read())
+    except Exception as e:
+        logger.warning("Failed to save RIDE PDF for %s: %s", row.clave_acceso, e)
 
 
 def _tick_sync() -> int:
@@ -52,6 +68,9 @@ def _tick_sync() -> int:
                 processed += 1
             session.add(row)
             session.commit()
+            if row.estado == "AUT":
+                session.refresh(row)
+                _save_ride_pdf(row)
     return processed
 
 

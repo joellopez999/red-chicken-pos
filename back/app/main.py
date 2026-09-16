@@ -584,6 +584,15 @@ def deny_public_sri_certificate_uploads(tenant_id: int, filename: str):
     raise HTTPException(status_code=403, detail="Certificate files are not available at this URL")
 
 
+@app.get("/uploads/{tenant_id}/sri/ride/{filename}", include_in_schema=False)
+def deny_public_sri_ride_uploads(tenant_id: int, filename: str):
+    """Saved RIDE PDFs contain customer/business data — only served via the authenticated
+    GET /orders/{order_id}/sri-invoice/ride route."""
+    if "/" in filename or "\\" in filename or filename.startswith("."):
+        raise HTTPException(status_code=404, detail="Invalid filename")
+    raise HTTPException(status_code=403, detail="RIDE files are not available at this URL")
+
+
 # Mount static files for serving images (fallback for any other uploads paths)
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
@@ -14843,9 +14852,11 @@ def download_order_sri_ride(
     order_id: int,
     current_user: Annotated[models.User, Depends(require_permission(Permission.ORDER_READ))],
     session: Session = Depends(get_session),
-) -> StreamingResponse:
+):
     """RIDE (representación impresa) PDF — available once a comprobante has been submitted,
-    even before authorization (marked PENDIENTE in that case)."""
+    even before authorization (marked PENDIENTE in that case). Once AUT, the worker saves a
+    permanent copy to disk (see sri_authorization_worker.ride_pdf_path); served from there
+    when present so the exact authorized document stays retrievable, else generated fresh."""
     order = session.exec(
         select(models.Order).where(
             models.Order.id == order_id,
@@ -14863,7 +14874,16 @@ def download_order_sri_ride(
     if not row:
         raise HTTPException(status_code=404, detail="SRI invoice not found")
 
+    from app.sri_authorization_worker import ride_pdf_path
     from app.sri_invoice_service import generar_ride_pdf
+
+    saved_path = ride_pdf_path(row.tenant_id, row.clave_acceso)
+    if saved_path.is_file():
+        return FileResponse(
+            saved_path,
+            media_type="application/pdf",
+            filename=f"factura-{row.clave_acceso}.pdf",
+        )
 
     buffer = generar_ride_pdf(row)
     return StreamingResponse(
