@@ -1124,9 +1124,11 @@ ModuleRegistry.registerModules([
           </div>
         }
 
-        <!-- Search / Create billing customer (reachable from the order-edit modal) -->
+        <!-- Search / Create billing customer — can be opened from on top of another already-open
+             modal (edit order, manual invoice, delivery create), so it needs a higher z-index than
+             the shared .modal-overlay regardless of DOM order. -->
         @if (customerPickerOpen()) {
-          <div class="modal-overlay" (click)="closeCustomerPicker()">
+          <div class="modal-overlay" style="z-index: 1100;" (click)="closeCustomerPicker()">
             <div class="modal" (click)="$event.stopPropagation()" appFocusFirstInput>
               <div class="modal-header">
                 <h3>{{ 'CUSTOMERS.SEARCH_OR_CREATE' | translate }}</h3>
