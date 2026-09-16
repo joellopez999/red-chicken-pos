@@ -26,6 +26,7 @@ from sqlmodel import Session, select
 
 from app import models
 from app.fiscal_invoice_service import order_fiscal_amount_cents
+from app.sri_signing import EC_TZ
 
 CODIGO_IMPUESTO_IVA = "2"  # Tabla 16
 CODIGO_PORCENTAJE_IVA_0 = "0"  # Tabla 18 — IVA 0%
@@ -109,7 +110,14 @@ def _comprador_identificacion(order: models.Order, billing_customer: models.Bill
     return TIPO_IDENTIFICACION_CONSUMIDOR_FINAL, IDENTIFICACION_CONSUMIDOR_FINAL, None
 
 
-def _razon_social_comprador(order: models.Order, billing_customer: models.BillingCustomer | None) -> str:
+def _razon_social_comprador(
+    tipo_id_comprador: str, order: models.Order, billing_customer: models.BillingCustomer | None
+) -> str:
+    # SRI requires the literal text "CONSUMIDOR FINAL" whenever the generic consumidor-final
+    # identification (07 / 9999999999999) is used — using the customer's real name there
+    # triggers error 69 "ERROR EN LA IDENTIFICACION DEL RECEPTOR" (confirmed live).
+    if tipo_id_comprador == TIPO_IDENTIFICACION_CONSUMIDOR_FINAL:
+        return "CONSUMIDOR FINAL"
     if billing_customer:
         return billing_customer.company_name or billing_customer.name
     return order.customer_name or "CONSUMIDOR FINAL"
@@ -137,7 +145,7 @@ def generar_xml_factura(
     subtotal_cents = sum(i.price_cents * i.quantity for i in active)
     total_cents = order_fiscal_amount_cents(session, order)
     tipo_id_comprador, ident_comprador, dir_comprador = _comprador_identificacion(order, billing_customer)
-    razon_social_comprador = _razon_social_comprador(order, billing_customer)
+    razon_social_comprador = _razon_social_comprador(tipo_id_comprador, order, billing_customer)
 
     detalles_xml = []
     for item in active:
@@ -190,7 +198,7 @@ def generar_xml_factura(
         f"<dirMatriz>{escape((tenant.sri_direccion_matriz or tenant.address or '')[:300])}</dirMatriz>"
         "</infoTributaria>"
         "<infoFactura>"
-        f"<fechaEmision>{datetime.now(timezone.utc).strftime('%d/%m/%Y')}</fechaEmision>"
+        f"<fechaEmision>{datetime.now(EC_TZ).strftime('%d/%m/%Y')}</fechaEmision>"
         f"{dir_establecimiento_xml}"
         f"<obligadoContabilidad>{'SI' if tenant.sri_obligado_contabilidad else 'NO'}</obligadoContabilidad>"
         f"<tipoIdentificacionComprador>{tipo_id_comprador}</tipoIdentificacionComprador>"

@@ -78,8 +78,13 @@ def consultar_autorizacion(clave_acceso: str, ambiente: int) -> AutorizacionResu
     latest = autorizaciones[-1] or {}
     mensajes = _as_list((latest.get("mensajes") or {}).get("mensaje"))
     fecha = latest.get("fechaAutorizacion")
+    # Ficha Técnica Tabla 7 documents short codes (PPR/AUT/NAT), but the live WSDL actually
+    # returns the full words "AUTORIZADO"/"NO AUTORIZADO" (confirmed against pruebas) — normalize
+    # here so the rest of the app (worker, frontend) can rely on the short codes as designed.
+    estado_raw = (latest.get("estado") or "").strip().upper()
+    estado_normalizado = {"AUTORIZADO": "AUT", "NO AUTORIZADO": "NAT"}.get(estado_raw, estado_raw)
     return AutorizacionResult(
-        estado=latest.get("estado"),
+        estado=estado_normalizado,
         numero_autorizacion=latest.get("numeroAutorizacion"),
         fecha_autorizacion=str(fecha) if fecha else None,
         comprobante_autorizado_xml=latest.get("comprobante"),

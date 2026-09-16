@@ -79,7 +79,7 @@ from .fiscal_invoice_service import (
 )
 from .sri_invoice_service import generar_clave_acceso, generar_xml_factura
 from .sri_providers import enviar_recepcion
-from .sri_signing import load_p12, sign_factura_xml
+from .sri_signing import EC_TZ, load_p12, sign_factura_xml
 from .tse_service import (
     assert_tse_mode_allowed,
     dsfinvk_export_stub,
@@ -4280,6 +4280,36 @@ def update_tenant_settings(
             tenant.tse_api_secret = tenant_update.tse_api_secret.strip()[:512]
         # Empty = keep existing
 
+    # Ecuador SRI electronic invoicing
+    if tenant_update.sri_mode is not None:
+        sm = tenant_update.sri_mode.strip().lower() if isinstance(tenant_update.sri_mode, str) else ""
+        if sm in ("off", "pruebas", "produccion"):
+            tenant.sri_mode = sm
+        elif sm == "":
+            tenant.sri_mode = "off"
+        else:
+            raise HTTPException(status_code=400, detail="sri_mode must be off, pruebas, or produccion")
+    if tenant_update.sri_ruc is not None:
+        ruc = "".join(ch for ch in tenant_update.sri_ruc if ch.isdigit()) if isinstance(tenant_update.sri_ruc, str) else ""
+        tenant.sri_ruc = ruc[:13] if ruc else None
+    if tenant_update.sri_razon_social is not None:
+        rs = tenant_update.sri_razon_social.strip() if isinstance(tenant_update.sri_razon_social, str) else ""
+        tenant.sri_razon_social = rs[:300] if rs else None
+    if tenant_update.sri_nombre_comercial is not None:
+        nc = tenant_update.sri_nombre_comercial.strip() if isinstance(tenant_update.sri_nombre_comercial, str) else ""
+        tenant.sri_nombre_comercial = nc[:300] if nc else None
+    if tenant_update.sri_direccion_matriz is not None:
+        dm = tenant_update.sri_direccion_matriz.strip() if isinstance(tenant_update.sri_direccion_matriz, str) else ""
+        tenant.sri_direccion_matriz = dm[:300] if dm else None
+    if tenant_update.sri_establecimiento is not None:
+        est = tenant_update.sri_establecimiento.strip() if isinstance(tenant_update.sri_establecimiento, str) else ""
+        tenant.sri_establecimiento = est[:3] if est else "001"
+    if tenant_update.sri_punto_emision is not None:
+        pe = tenant_update.sri_punto_emision.strip() if isinstance(tenant_update.sri_punto_emision, str) else ""
+        tenant.sri_punto_emision = pe[:3] if pe else "001"
+    if tenant_update.sri_obligado_contabilidad is not None:
+        tenant.sri_obligado_contabilidad = bool(tenant_update.sri_obligado_contabilidad)
+
     # Per-tenant SMTP / email (optional; fallback to global config)
     if tenant_update.smtp_host is not None:
         tenant.smtp_host = (
@@ -4638,6 +4668,7 @@ MAX_SRI_CERTIFICATE_BYTES = 1 * 1024 * 1024
 )
 async def upload_sri_certificate(
     request: Request,
+    response: Response,
     file: Annotated[UploadFile, File()],
     password: Annotated[str, Form()],
     current_user: Annotated[models.User, Depends(require_permission(Permission.SETTINGS_UPDATE))],
@@ -14734,7 +14765,11 @@ def issue_order_sri_invoice(
             models.SriComprobante.tenant_id == current_user.tenant_id,
         )
     ).first()
-    if existing:
+    # Idempotent once accepted for processing or authorized (PPR/RECIBIDA/AUT) — but a
+    # rejected submission (DEVUELTA at recepción, NAT at autorización) must be retried with
+    # the SAME clave de acceso and secuencial per the Ficha Técnica §9 note 1 ("sin generar
+    # nuevos números"), once the underlying data problem has been fixed.
+    if existing and existing.estado not in ("DEVUELTA", "NAT"):
         return sri_comprobante_public_dict(existing)
 
     cert_path = UPLOADS_DIR / str(tenant.id) / "sri" / tenant.sri_certificate_filename
@@ -14742,15 +14777,25 @@ def issue_order_sri_invoice(
         raise HTTPException(status_code=400, detail="Certificado SRI no encontrado; vuelve a subirlo en Ajustes")
 
     ambiente = 1 if tenant.sri_mode == "pruebas" else 2
-    secuencial = tenant.sri_secuencial_factura
-    clave_acceso = generar_clave_acceso(
-        fecha_emision=datetime.now(timezone.utc).date(),
-        ruc=tenant.sri_ruc,
-        ambiente=ambiente,
-        establecimiento=tenant.sri_establecimiento,
-        punto_emision=tenant.sri_punto_emision,
-        secuencial=secuencial,
-    )
+    if existing and existing.estado == "DEVUELTA":
+        # DEVUELTA = rejected at Recepción, before SRI ever registered the clave — safe to
+        # resend the same clave/secuencial (Ficha Técnica §9 note 1).
+        clave_acceso = existing.clave_acceso
+        secuencial = int(existing.secuencial)
+    else:
+        # existing.estado == "NAT" (or no existing row): once a comprobante is RECIBIDA, SRI
+        # permanently registers that clave/secuencial even if later NOT AUTORIZADO — confirmed
+        # live (error 43 "CLAVE ACCESO REGISTRADA" on reusing a NAT clave) — so a NAT retry
+        # needs a brand-new secuencial, same as a fresh issuance.
+        secuencial = tenant.sri_secuencial_factura
+        clave_acceso = generar_clave_acceso(
+            fecha_emision=datetime.now(EC_TZ).date(),
+            ruc=tenant.sri_ruc,
+            ambiente=ambiente,
+            establecimiento=tenant.sri_establecimiento,
+            punto_emision=tenant.sri_punto_emision,
+            secuencial=secuencial,
+        )
     xml_sin_firma = generar_xml_factura(session, tenant, order, clave_acceso, secuencial)
 
     try:
@@ -14766,22 +14811,26 @@ def issue_order_sri_invoice(
         logger.error("SRI recepción failed for order %s: %s", order.id, e, exc_info=True)
         raise HTTPException(status_code=502, detail="No se pudo contactar al SRI") from e
 
-    row = models.SriComprobante(
+    row = existing or models.SriComprobante(
         tenant_id=tenant.id,
         order_id=order.id,
         ambiente=ambiente,
         clave_acceso=clave_acceso,
         secuencial=f"{secuencial:09d}",
-        estado=recepcion.estado or "DEVUELTA",
-        xml_firmado=xml_firmado,
-        mensajes_error={"mensajes": recepcion.mensajes} if recepcion.mensajes else None,
-        amount_cents=order_fiscal_amount_cents(session, order),
-        submitted_at=datetime.now(timezone.utc),
     )
+    row.estado = recepcion.estado or "DEVUELTA"
+    row.xml_firmado = xml_firmado
+    row.xml_autorizado = None
+    row.numero_autorizacion = None
+    row.fecha_autorizacion = None
+    row.mensajes_error = {"mensajes": recepcion.mensajes} if recepcion.mensajes else None
+    row.amount_cents = order_fiscal_amount_cents(session, order)
+    row.submitted_at = datetime.now(timezone.utc)
     session.add(row)
-    # Only advance the sequential counter once SRI accepted the submission for processing
-    # (RECIBIDA) — a DEVUELTA (malformed/rejected) attempt must not burn a sequential number.
-    if recepcion.estado == "RECIBIDA":
+    # Only advance the sequential counter the first time THIS secuencial is actually accepted
+    # (RECIBIDA) — a rejected attempt (DEVUELTA/NAT, including a retry that reuses the same
+    # secuencial per Ficha Técnica §9 note 1) must not burn/re-burn a sequential number.
+    if recepcion.estado == "RECIBIDA" and tenant.sri_secuencial_factura == secuencial:
         tenant.sri_secuencial_factura = secuencial + 1
         session.add(tenant)
     session.commit()
