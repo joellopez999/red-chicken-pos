@@ -246,7 +246,9 @@ def generar_ride_pdf(comprobante: models.SriComprobante) -> BytesIO:
 
     def text(path: str, default: str = "") -> str:
         el = root.find(path)
-        return el.text if el is not None and el.text else default
+        # escape() guards against reportlab's Paragraph mini-markup (<font>, <b>, ...)
+        # being triggered by a customer/product name that happens to contain <, >, or &.
+        return escape(el.text) if el is not None and el.text else default
 
     razon_social = text("infoTributaria/razonSocial")
     ruc = text("infoTributaria/ruc")
@@ -284,7 +286,7 @@ def generar_ride_pdf(comprobante: models.SriComprobante) -> BytesIO:
     for detalle in root.findall("detalles/detalle"):
         def dtext(tag: str, default: str = "") -> str:
             el = detalle.find(tag)
-            return el.text if el is not None and el.text else default
+            return escape(el.text) if el is not None and el.text else default
 
         rows.append(
             [dtext("cantidad"), dtext("descripcion"), f"${dtext('precioUnitario', '0.00')}", f"${dtext('precioTotalSinImpuesto', '0.00')}"]

@@ -348,6 +348,22 @@ class Settings(BaseSettings):
             self.rate_limit_password_reset_per_hour = 100
         return self
 
+    @model_validator(mode="after")
+    def _require_real_secrets_in_production(self) -> "Settings":
+        """Refuse to boot in production with the placeholder JWT secrets — those are public
+        (they're this file's own defaults), so leaving them in place makes every access/refresh
+        token forgeable. Dev/test keep the placeholders working so a bare checkout still runs."""
+        if self.is_production:
+            insecure = {"CHANGE_THIS_IN_PRODUCTION", "CHANGE_THIS_REFRESH_SECRET_IN_PRODUCTION", ""}
+            if self.secret_key in insecure or self.refresh_secret_key in insecure:
+                raise ValueError(
+                    "PRODUCTION=true requires real SECRET_KEY and REFRESH_SECRET_KEY values "
+                    "(config.env still has the placeholder defaults)"
+                )
+            if self.secret_key == self.refresh_secret_key:
+                raise ValueError("SECRET_KEY and REFRESH_SECRET_KEY must be different values")
+        return self
+
     @property
     def database_url(self) -> str:
         # SQLModel uses SQLAlchemy under the hood; this uses the psycopg driver (v3).

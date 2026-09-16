@@ -14,6 +14,7 @@ import logging
 import requests
 
 from app import models
+from app.tenant_secrets import RESEND_API_KEY_DOMAIN, decrypt_secret
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ def send_invoice_email(
     ride_pdf_bytes: bytes,
     xml_bytes: bytes | None,
 ) -> bool:
-    api_key = (tenant.resend_api_key or "").strip()
+    api_key = (decrypt_secret(tenant.resend_api_key, RESEND_API_KEY_DOMAIN) or "").strip()
     if not api_key or not to_email:
         return False
 

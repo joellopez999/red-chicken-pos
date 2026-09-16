@@ -86,6 +86,7 @@ from .sri_invoice_service import (
 )
 from .sri_providers import enviar_recepcion
 from .sri_signing import EC_TZ, load_p12, sign_factura_xml
+from . import tenant_secrets
 from .tse_service import (
     assert_tse_mode_allowed,
     dsfinvk_export_stub,
@@ -385,9 +386,9 @@ async def _app_lifespan(app: FastAPI):
 
 app = FastAPI(
     title="POS API",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    docs_url=None if settings.is_production else "/docs",
+    redoc_url=None if settings.is_production else "/redoc",
+    openapi_url=None if settings.is_production else "/openapi.json",
     root_path=settings.root_path,
     swagger_ui_parameters=_swagger_ui_params,
     lifespan=_app_lifespan,
@@ -4328,7 +4329,9 @@ def update_tenant_settings(
         tenant.sri_obligado_contabilidad = bool(tenant_update.sri_obligado_contabilidad)
     if tenant_update.resend_api_key is not None:
         if isinstance(tenant_update.resend_api_key, str) and tenant_update.resend_api_key.strip():
-            tenant.resend_api_key = tenant_update.resend_api_key.strip()[:255]
+            tenant.resend_api_key = tenant_secrets.encrypt_secret(
+                tenant_update.resend_api_key.strip()[:255], tenant_secrets.RESEND_API_KEY_DOMAIN
+            )
         # Empty = keep existing
 
     # Per-tenant SMTP / email (optional; fallback to global config)
@@ -4721,11 +4724,16 @@ async def upload_sri_certificate(
     tenant_dir = UPLOADS_DIR / str(current_user.tenant_id) / "sri"
     tenant_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{uuid4().hex}.p12"
-    (tenant_dir / filename).write_bytes(contents)
+    cert_file_path = tenant_dir / filename
+    cert_file_path.write_bytes(tenant_secrets.encrypt_bytes(contents, tenant_secrets.SRI_CERT_FILE_DOMAIN))
+    try:
+        cert_file_path.chmod(0o600)
+    except OSError:
+        pass
 
     old_filename = tenant.sri_certificate_filename
     tenant.sri_certificate_filename = filename
-    tenant.sri_certificate_password = password
+    tenant.sri_certificate_password = tenant_secrets.encrypt_secret(password, tenant_secrets.SRI_CERT_PASSWORD_DOMAIN)
     session.add(tenant)
     session.commit()
 
@@ -13864,7 +13872,10 @@ def create_satisfecho_delivery_order_endpoint(
 
 
 @app.post("/orders/manual-invoice")
+@limiter.limit(f"{getattr(settings, 'rate_limit_admin_per_minute', 30)}/minute", key_func=_rate_limit_key_user)
 def create_manual_invoice_order(
+    request: Request,
+    response: Response,
     body: models.ManualInvoiceCreate,
     current_user: Annotated[models.User, Depends(require_permission(Permission.ORDER_UPDATE_STATUS))],
     session: Session = Depends(get_session),
@@ -13888,9 +13899,17 @@ def create_manual_invoice_order(
 
     # Resolve and validate every line BEFORE creating anything, so a bad line never leaves
     # behind an empty/partial order.
+    # Sanity caps on a hand-typed fiscal document: a fat-fingered quantity/amount produces a
+    # real SRI invoice that can't be easily undone, so bound both rather than trusting the input.
+    MAX_MANUAL_LINE_QUANTITY = 999
+    MAX_MANUAL_LINE_AMOUNT_CENTS = 100_000_00  # $100,000 per line
+    MAX_MANUAL_LINE_DESCRIPTION_LENGTH = 300
+
     resolved: list[dict[str, Any]] = []
     for line in body.lines:
-        quantity = max(1, line.quantity)
+        if line.quantity < 1 or line.quantity > MAX_MANUAL_LINE_QUANTITY:
+            raise HTTPException(status_code=400, detail=f"quantity must be between 1 and {MAX_MANUAL_LINE_QUANTITY}")
+        quantity = line.quantity
         if line.type == "product":
             if not line.product_id:
                 raise HTTPException(status_code=400, detail="product_id is required for product lines")
@@ -13909,11 +13928,14 @@ def create_manual_invoice_order(
                 "price_cents": product.price_cents,
             })
         elif line.type == "custom":
-            description = (line.description or "").strip()
+            description = (line.description or "").strip()[:MAX_MANUAL_LINE_DESCRIPTION_LENGTH]
             if not description:
                 raise HTTPException(status_code=400, detail="description is required for custom lines")
-            if not line.amount_cents or line.amount_cents <= 0:
-                raise HTTPException(status_code=400, detail="amount_cents must be > 0 for custom lines")
+            if not line.amount_cents or line.amount_cents <= 0 or line.amount_cents > MAX_MANUAL_LINE_AMOUNT_CENTS:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"amount_cents must be between 1 and {MAX_MANUAL_LINE_AMOUNT_CENTS} for custom lines",
+                )
             resolved.append({
                 "product_id": None,  # filled in below once the placeholder exists
                 "product_name": description,
@@ -14877,9 +14899,12 @@ def get_order_sri_invoice(
 
 
 @app.post("/orders/{order_id}/sri-invoice/issue")
+@limiter.limit(f"{getattr(settings, 'rate_limit_admin_per_minute', 30)}/minute", key_func=_rate_limit_key_user)
 def issue_order_sri_invoice(
+    request: Request,
+    response: Response,
     order_id: int,
-    current_user: Annotated[models.User, Depends(require_permission(Permission.ORDER_READ))],
+    current_user: Annotated[models.User, Depends(require_permission(Permission.ORDER_UPDATE_STATUS))],
     session: Session = Depends(get_session),
 ) -> dict:
     """Generate, sign (XAdES-BES) and submit (Recepción) a factura for the order.
@@ -14957,7 +14982,9 @@ def issue_order_sri_invoice(
     xml_sin_firma = generar_xml_factura(session, tenant, order, clave_acceso, secuencial)
 
     try:
-        private_key, certificate = load_p12(cert_path.read_bytes(), tenant.sri_certificate_password)
+        cert_bytes = tenant_secrets.decrypt_bytes(cert_path.read_bytes(), tenant_secrets.SRI_CERT_FILE_DOMAIN)
+        cert_password = tenant_secrets.decrypt_secret(tenant.sri_certificate_password, tenant_secrets.SRI_CERT_PASSWORD_DOMAIN)
+        private_key, certificate = load_p12(cert_bytes, cert_password)
         xml_firmado = sign_factura_xml(xml_sin_firma, private_key, certificate)
     except Exception as e:
         logger.error("SRI signing failed for order %s: %s", order.id, e, exc_info=True)
@@ -15043,10 +15070,13 @@ def download_order_sri_ride(
 
 
 @app.post("/orders/{order_id}/sri-invoice/send-email")
+@limiter.limit(f"{getattr(settings, 'rate_limit_admin_per_minute', 30)}/minute", key_func=_rate_limit_key_user)
 def send_order_sri_invoice_email(
+    request: Request,
+    response: Response,
     order_id: int,
     body: models.SriInvoiceEmailRequest,
-    current_user: Annotated[models.User, Depends(require_permission(Permission.ORDER_READ))],
+    current_user: Annotated[models.User, Depends(require_permission(Permission.ORDER_UPDATE_STATUS))],
     session: Session = Depends(get_session),
 ) -> dict:
     """Manually (re)send the authorized invoice by email via Resend. Only available once AUT."""

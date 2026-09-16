@@ -63,7 +63,10 @@ def _int_to_b64(value: int) -> str:
 
 def sign_factura_xml(xml_str: str, private_key: RSAPrivateKey, certificate: Certificate) -> str:
     """Returns the enveloped XAdES-BES-signed XML string for a factura with id="comprobante"."""
-    root = etree.fromstring(xml_str.encode("utf-8"))
+    # This XML is always our own just-generated document (never attacker-controlled), but a
+    # hardened parser costs nothing and removes XXE as a concern if that ever changes.
+    parser = etree.XMLParser(resolve_entities=False, no_network=True)
+    root = etree.fromstring(xml_str.encode("utf-8"), parser=parser)
     if root.get("id") != "comprobante":
         raise ValueError('root element must have id="comprobante" for the enveloped Reference')
 
