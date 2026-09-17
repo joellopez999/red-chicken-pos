@@ -21,6 +21,7 @@ import { SidebarComponent } from '../shared/sidebar.component';
 import {
   ApiService,
   SalesReport,
+  StaffActionLogEntry,
   User,
   WorkSession,
   workSessionNetWorkSeconds,
@@ -123,6 +124,88 @@ export class ReportsComponent implements OnInit {
     return r.by_category.reduce((sum, c) => sum + c.quantity, 0);
   });
 
+  /** Distinct payment methods actually used in the range, sorted with cash/transfer first
+   * (the two the owner cares most about day to day) then everything else alphabetically. */
+  paymentMethodColumns = computed(() => {
+    const r = this.report();
+    const methods = new Set((r?.payment_methods_daily ?? []).map((m) => m.payment_method));
+    const priority = ['cash', 'transfer'];
+    return Array.from(methods).sort((a, b) => {
+      const pa = priority.indexOf(a);
+      const pb = priority.indexOf(b);
+      if (pa !== -1 || pb !== -1) return (pa === -1 ? 99 : pa) - (pb === -1 ? 99 : pb);
+      return a.localeCompare(b);
+    });
+  });
+
+  /** One row per day (same days as summary.daily) with revenue_cents per payment method,
+   * pivoted from the long-format payment_methods_daily so it renders as a single table. */
+  paymentMethodsByDayRows = computed(() => {
+    const r = this.report();
+    if (!r) return [];
+    const byDay = new Map<string, Record<string, number>>();
+    for (const row of r.payment_methods_daily ?? []) {
+      if (!byDay.has(row.date)) byDay.set(row.date, {});
+      byDay.get(row.date)![row.payment_method] = row.revenue_cents;
+    }
+    return r.summary.daily.map((d) => ({
+      date: d.date,
+      methods: byDay.get(d.date) ?? {},
+      total: d.revenue_cents,
+    }));
+  });
+
+  paymentMethodLabel(method: string): string {
+    return this.translate.instant(`PAYMENT_METHOD.${method}`) || method;
+  }
+
+  // ---- Staff action / error log (panel de control) ----
+  staffLogEntries = signal<StaffActionLogEntry[]>([]);
+  staffLogActionTypes = signal<string[]>([]);
+  staffLogLoading = signal(false);
+  staffLogError = signal<string | null>(null);
+  staffLogFromDate = signal('');
+  staffLogToDate = signal('');
+  staffLogActionType = signal('');
+  staffLogOnlyErrors = signal(false);
+
+  loadStaffActionLog(): void {
+    if (!this.canViewAttendance()) return;
+    this.staffLogLoading.set(true);
+    this.staffLogError.set(null);
+    this.api
+      .getStaffActionLog({
+        fromDate: this.staffLogFromDate() || undefined,
+        toDate: this.staffLogToDate() || undefined,
+        actionType: this.staffLogActionType() || undefined,
+        onlyErrors: this.staffLogOnlyErrors(),
+        limit: 200,
+      })
+      .subscribe({
+        next: (data) => {
+          this.staffLogEntries.set(data.entries);
+          this.staffLogActionTypes.set(data.action_types);
+          this.staffLogLoading.set(false);
+        },
+        error: (err) => {
+          this.staffLogError.set(err?.message || 'Failed to load log');
+          this.staffLogLoading.set(false);
+        },
+      });
+  }
+
+  clearStaffActionLogFilters(): void {
+    this.staffLogFromDate.set('');
+    this.staffLogToDate.set('');
+    this.staffLogActionType.set('');
+    this.staffLogOnlyErrors.set(false);
+    this.loadStaffActionLog();
+  }
+
+  staffActionTypeLabel(actionType: string): string {
+    return this.translate.instant(`STAFF_LOG.ACTION_TYPE.${actionType}`) || actionType;
+  }
+
   /** Bumps when UI language changes so currency/date formatting refreshes. */
   private reportIntlRevision = signal(0);
 
@@ -138,6 +221,7 @@ export class ReportsComponent implements OnInit {
       `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
     );
     this.translate.onLangChange.subscribe(() => this.reportIntlRevision.update((n) => n + 1));
+    this.loadStaffActionLog();
     if (this.canViewAttendance()) {
       this.api.getUsers().subscribe({
         next: (users) => {

@@ -1936,6 +1936,10 @@ export interface SalesReport {
     }[];
   };
   by_product: { product_id: number; product_name: string; category?: string; quantity: number; revenue_cents: number; cost_cents?: number; profit_cents?: number }[];
+  /** Same items as by_product, sorted by quantity sold instead of revenue — true "best-sellers" */
+  top_products_by_quantity?: { product_id: number; product_name: string; category?: string; quantity: number; revenue_cents: number }[];
+  /** One row per (day, payment method) combo actually used in the range */
+  payment_methods_daily?: { date: string; payment_method: string; revenue_cents: number; order_count: number }[];
   by_category: { category: string; quantity: number; revenue_cents: number; cost_cents?: number; profit_cents?: number }[];
   by_table: { table_name: string; revenue_cents: number; cost_cents?: number; profit_cents?: number; order_count: number }[];
   by_waiter: {
@@ -1952,6 +1956,24 @@ export interface SalesReport {
     by_status?: { status: string; count: number }[];
     overbooking_slots_count?: number;
   };
+}
+
+export interface StaffActionLogEntry {
+  id: number;
+  created_at: string;
+  user_id: number | null;
+  user_email: string | null;
+  action_type: string;
+  summary: string | null;
+  detail: Record<string, unknown> | null;
+  success: boolean;
+  error_message: string | null;
+  request_path: string | null;
+}
+
+export interface StaffActionLogResponse {
+  entries: StaffActionLogEntry[];
+  action_types: string[];
 }
 
 // Provider & Catalog Interfaces
@@ -3331,6 +3353,24 @@ export class ApiService {
   getSalesReports(fromDate: string, toDate: string): Observable<SalesReport> {
     const params = { from_date: fromDate, to_date: toDate };
     return this.http.get<SalesReport>(`${this.apiUrl}/reports/sales`, { params });
+  }
+
+  getStaffActionLog(filters: {
+    fromDate?: string;
+    toDate?: string;
+    actionType?: string;
+    onlyErrors?: boolean;
+    userId?: number;
+    limit?: number;
+  }): Observable<StaffActionLogResponse> {
+    const params: Record<string, string> = {};
+    if (filters.fromDate) params['from_date'] = filters.fromDate;
+    if (filters.toDate) params['to_date'] = filters.toDate;
+    if (filters.actionType) params['action_type'] = filters.actionType;
+    if (filters.onlyErrors) params['only_errors'] = 'true';
+    if (filters.userId != null) params['user_id'] = String(filters.userId);
+    if (filters.limit != null) params['limit'] = String(filters.limit);
+    return this.http.get<StaffActionLogResponse>(`${this.apiUrl}/reports/staff-action-log`, { params });
   }
 
   getReportsExport(

@@ -181,6 +181,71 @@
       </section>
 
       @if (r.summary.total_orders > 0) {
+      <!-- Payment methods by day (cash vs. transfer vs. …) -->
+      @if (paymentMethodColumns().length > 0) {
+      <section class="report-section" data-testid="reports-payment-methods-daily">
+        <h2>{{ 'REPORTS.PAYMENT_METHODS_DAILY' | translate }}</h2>
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>{{ 'REPORTS.DATE' | translate }}</th>
+                @for (m of paymentMethodColumns(); track m) {
+                  <th class="num">{{ paymentMethodLabel(m) }}</th>
+                }
+                <th class="num">{{ 'REPORTS.TOTAL' | translate }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of paymentMethodsByDayRows(); track row.date) {
+                <tr>
+                  <td>{{ formatShortDate(row.date) }}</td>
+                  @for (m of paymentMethodColumns(); track m) {
+                    <td class="num">{{ row.methods[m] ? formatCurrency(row.methods[m]) : '—' }}</td>
+                  }
+                  <td class="num"><strong>{{ formatCurrency(row.total) }}</strong></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+      }
+
+      <!-- Top-selling products by quantity -->
+      @if ((r.top_products_by_quantity ?? []).length > 0) {
+      <section class="report-section" data-testid="reports-top-products-quantity">
+        <h2>{{ 'REPORTS.TOP_PRODUCTS_BY_QUANTITY' | translate }}</h2>
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>{{ 'REPORTS.PRODUCT' | translate }}</th>
+                <th>{{ 'REPORTS.QUANTITY' | translate }}</th>
+                <th class="num">{{ 'REPORTS.REVENUE' | translate }}</th>
+                <th class="num">{{ 'REPORTS.SHARE' | translate }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (p of r.top_products_by_quantity ?? []; track p.product_id) {
+                <tr>
+                  <td>{{ p.product_name }}</td>
+                  <td>{{ p.quantity }} ({{ formatPct(p.quantity, totalProductQuantity()) }})</td>
+                  <td class="num">{{ formatCurrency(p.revenue_cents) }}</td>
+                  <td class="num share-with-bar">
+                    <div class="bar-track inline">
+                      <div class="bar-fill product" [style.width.%]="(p.quantity / (r.top_products_by_quantity![0].quantity || 1)) * 100"></div>
+                    </div>
+                    <span class="share-value">{{ formatPct(p.quantity, totalProductQuantity()) }}</span>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+      }
+
       <!-- By product -->
       <section class="report-section" data-testid="reports-by-product">
         <h2>{{ 'REPORTS.BY_PRODUCT' | translate }}</h2>
@@ -555,6 +620,86 @@
         }
       </section>
     }
+  }
+
+  @if (canViewAttendance()) {
+    <section class="report-section staff-log-section" data-testid="staff-action-log-section">
+      <h2>{{ 'STAFF_LOG.TITLE' | translate }}</h2>
+      <p class="subtitle">{{ 'STAFF_LOG.SUBTITLE' | translate }}</p>
+      <div class="staff-log-filters">
+        <div class="date-range">
+          <label>{{ 'REPORTS.FROM' | translate }}</label>
+          <input type="date" [ngModel]="staffLogFromDate()" (ngModelChange)="staffLogFromDate.set($event)" />
+        </div>
+        <div class="date-range">
+          <label>{{ 'REPORTS.TO' | translate }}</label>
+          <input type="date" [ngModel]="staffLogToDate()" (ngModelChange)="staffLogToDate.set($event)" />
+        </div>
+        <div class="date-range">
+          <label>{{ 'STAFF_LOG.ACTION_TYPE_LABEL' | translate }}</label>
+          <select [ngModel]="staffLogActionType()" (ngModelChange)="staffLogActionType.set($event)">
+            <option value="">{{ 'STAFF_LOG.ALL_ACTIONS' | translate }}</option>
+            @for (t of staffLogActionTypes(); track t) {
+              <option [value]="t">{{ staffActionTypeLabel(t) }}</option>
+            }
+          </select>
+        </div>
+        <label class="staff-log-errors-only">
+          <input type="checkbox" [ngModel]="staffLogOnlyErrors()" (ngModelChange)="staffLogOnlyErrors.set($event)" />
+          {{ 'STAFF_LOG.ONLY_ERRORS' | translate }}
+        </label>
+        <button class="btn btn-primary" (click)="loadStaffActionLog()" [disabled]="staffLogLoading()">
+          {{ staffLogLoading() ? ('REPORTS.LOADING' | translate) : ('REPORTS.REFRESH' | translate) }}
+        </button>
+        <button class="btn btn-secondary" (click)="clearStaffActionLogFilters()" [disabled]="staffLogLoading()">
+          {{ 'STAFF_LOG.CLEAR_FILTERS' | translate }}
+        </button>
+      </div>
+
+      @if (staffLogError()) {
+        <div class="error-banner">{{ staffLogError() }}</div>
+      }
+
+      @if (staffLogLoading()) {
+        <div class="loading-state">{{ 'REPORTS.LOADING' | translate }}</div>
+      } @else if (staffLogEntries().length === 0) {
+        <p class="muted">{{ 'STAFF_LOG.EMPTY' | translate }}</p>
+      } @else {
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>{{ 'STAFF_LOG.WHEN' | translate }}</th>
+                <th>{{ 'STAFF_LOG.USER' | translate }}</th>
+                <th>{{ 'STAFF_LOG.ACTION_TYPE_LABEL' | translate }}</th>
+                <th>{{ 'STAFF_LOG.SUMMARY' | translate }}</th>
+                <th>{{ 'STAFF_LOG.STATUS' | translate }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (entry of staffLogEntries(); track entry.id) {
+                <tr [class.staff-log-row-error]="!entry.success">
+                  <td>{{ entry.created_at | date: 'short' }}</td>
+                  <td>{{ entry.user_email || '—' }}</td>
+                  <td>{{ staffActionTypeLabel(entry.action_type) }}</td>
+                  <td>
+                    {{ entry.summary }}
+                    @if (!entry.success && entry.error_message) {
+                      <div class="muted staff-log-error-detail">{{ entry.error_message }}</div>
+                    }
+                  </td>
+                  <td>
+                    <span [class]="entry.success ? 'badge badge-success' : 'badge badge-error'">
+                      {{ entry.success ? ('STAFF_LOG.OK' | translate) : ('STAFF_LOG.ERROR' | translate) }}
+                    </span>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
   }
   </div>
 

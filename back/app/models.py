@@ -2533,6 +2533,26 @@ class DeliveryIntegrationEventLog(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class StaffActionLog(SQLModel, table=True):
+    """Unified log for staff actions (cancel/delete/mark-paid/issue-invoice/…) and unhandled
+    backend errors, so the admin panel has one place to see "who did what" and "what broke" —
+    same shape as DeliveryIntegrationEventLog, generalized beyond delivery webhooks."""
+
+    __tablename__ = "staff_action_log"
+
+    id: int | None = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    user_id: int | None = Field(default=None, foreign_key="user.id", index=True)
+    user_email: str | None = Field(default=None, max_length=255)  # snapshot: survives user deletion
+    action_type: str = Field(max_length=64, index=True)
+    summary: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
+    detail: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    success: bool = Field(default=True, index=True)
+    error_message: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
+    request_path: str | None = Field(default=None, max_length=255)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class DeliveryIntegrationUpsert(SQLModel):
     provider_key: str = Field(max_length=64)
     enabled: bool = False

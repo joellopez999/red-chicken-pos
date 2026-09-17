@@ -89,6 +89,7 @@ from .sri_providers import enviar_recepcion
 from .sri_signing import EC_TZ, load_p12, sign_factura_xml
 from .take_away import is_take_away_table as _is_take_away_table
 from . import tenant_secrets
+from .staff_action_log import log_staff_action
 from .tse_service import (
     assert_tse_mode_allowed,
     dsfinvk_export_stub,
@@ -502,6 +503,52 @@ async def database_statement_error_handler(request: Request, exc: StatementError
             content={"detail": "Database temporarily unavailable. Try again shortly."},
         )
     raise exc
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    try:
+        from jose import JWTError, jwt
+
+        raw_token = request.cookies.get("access_token")
+        if not raw_token:
+            auth_header = request.headers.get("authorization", "")
+            if auth_header.lower().startswith("bearer "):
+                raw_token = auth_header[7:]
+        tenant_id = None
+        user_email = None
+        if raw_token:
+            try:
+                payload = jwt.decode(raw_token, settings.secret_key, algorithms=[settings.algorithm])
+                tenant_id = payload.get("tenant_id")
+                user_email = payload.get("sub")
+            except JWTError:
+                pass
+        if tenant_id is not None:
+            with Session(engine) as log_session:
+                user_row = log_session.exec(
+                    select(models.User)
+                    .where(models.User.email == user_email)
+                    .where(models.User.tenant_id == tenant_id)
+                ).first()
+                log_staff_action(
+                    log_session,
+                    tenant_id=tenant_id,
+                    user_id=getattr(user_row, "id", None),
+                    user_email=user_email,
+                    action_type="unhandled_error",
+                    summary=f"{type(exc).__name__}: {exc}"[:500],
+                    success=False,
+                    error_message=f"{type(exc).__name__}: {exc}",
+                    request_path=str(request.url.path),
+                )
+    except Exception:
+        logger.exception("Failed while logging unhandled error to staff_action_log")
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Internal server error."},
+    )
 
 
 # Uploads directory for product images
@@ -14378,7 +14425,19 @@ def update_order_status(
         "table_name": table.name if table else "Unknown",
         "status": order.status.value
     }, table_id=order.table_id)
-    
+
+    if status_update.status == models.OrderStatus.cancelled:
+        log_staff_action(
+            session,
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.id,
+            user_email=current_user.email,
+            action_type="order_cancel",
+            summary=f"Pedido #{order.id} cancelado",
+            detail={"order_id": order.id},
+            request_path="/orders/{order_id}/status",
+        )
+
     return {"status": "updated", "order_id": order.id, "new_status": order.status.value}
 
 
@@ -14478,6 +14537,16 @@ def mark_order_paid(
         "payment_method": order.payment_method or method
     }, table_id=order.table_id)
 
+    log_staff_action(
+        session,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        user_email=current_user.email,
+        action_type="order_mark_paid",
+        summary=f"Pedido #{order.id} marcado como pagado ({order.payment_method or method})",
+        detail={"order_id": order.id, "payment_method": order.payment_method or method},
+        request_path="/orders/{order_id}/mark-paid",
+    )
     return {
         "status": "paid",
         "order_id": order.id,
@@ -14822,6 +14891,16 @@ def delete_order(
         session.add(table)
     session.add(order)
     session.commit()
+    log_staff_action(
+        session,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        user_email=current_user.email,
+        action_type="order_delete",
+        summary=f"Pedido #{order.id} eliminado",
+        detail={"order_id": order.id, "pin_used": bool(tenant and tenant.history_delete_pin)},
+        request_path="/orders/{order_id}",
+    )
     return {"status": "deleted", "order_id": order.id}
 
 
@@ -15037,12 +15116,36 @@ def issue_order_sri_invoice(
         xml_firmado = sign_factura_xml(xml_sin_firma, private_key, certificate)
     except Exception as e:
         logger.error("SRI signing failed for order %s: %s", order.id, e, exc_info=True)
+        log_staff_action(
+            session,
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.id,
+            user_email=current_user.email,
+            action_type="sri_invoice_issue",
+            summary=f"Factura SRI para pedido #{order.id}: fallo al firmar",
+            detail={"order_id": order.id},
+            success=False,
+            error_message=str(e),
+            request_path="/orders/{order_id}/sri-invoice/issue",
+        )
         raise HTTPException(status_code=500, detail="No se pudo firmar el comprobante") from e
 
     try:
         recepcion = enviar_recepcion(xml_firmado.encode("utf-8"), ambiente)
     except Exception as e:
         logger.error("SRI recepción failed for order %s: %s", order.id, e, exc_info=True)
+        log_staff_action(
+            session,
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.id,
+            user_email=current_user.email,
+            action_type="sri_invoice_issue",
+            summary=f"Factura SRI para pedido #{order.id}: no se pudo contactar al SRI",
+            detail={"order_id": order.id},
+            success=False,
+            error_message=str(e),
+            request_path="/orders/{order_id}/sri-invoice/issue",
+        )
         raise HTTPException(status_code=502, detail="No se pudo contactar al SRI") from e
 
     row = existing or models.SriComprobante(
@@ -15069,6 +15172,18 @@ def issue_order_sri_invoice(
         session.add(tenant)
     session.commit()
     session.refresh(row)
+    log_staff_action(
+        session,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        user_email=current_user.email,
+        action_type="sri_invoice_issue",
+        summary=f"Factura SRI para pedido #{order.id}: {row.estado}",
+        detail={"order_id": order.id, "clave_acceso": row.clave_acceso, "estado": row.estado},
+        success=row.estado != "DEVUELTA",
+        error_message=None if row.estado != "DEVUELTA" else str(row.mensajes_error),
+        request_path="/orders/{order_id}/sri-invoice/issue",
+    )
     return sri_comprobante_public_dict(row)
 
 
@@ -16068,7 +16183,18 @@ def remove_order_item_staff(
         "table_name": table.name if table else "Unknown",
         "new_total_cents": new_total
     }, table_id=order.table_id)
-    
+
+    log_staff_action(
+        session,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        user_email=current_user.email,
+        action_type="order_item_remove",
+        summary=f"Ítem #{item.id} ({item.product_name}) removido del pedido #{order.id}",
+        detail={"order_id": order.id, "item_id": item.id, "reason": reason},
+        request_path="/orders/{order_id}/items/{item_id}",
+    )
+
     return {
         "status": "item_removed",
         "order_id": order.id,

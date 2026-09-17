@@ -1281,7 +1281,9 @@
     "stripe": "Stripe (online)",
     "revolut": "Revolut",
     "transfer": "Bank transfer",
-    "other": "Other"
+    "other": "Other",
+    "manual_invoice": "Manual invoice",
+    "unknown": "Unspecified"
   },
   "ORDER_STATUS": {
     "pending": "Pending",
@@ -1400,6 +1402,10 @@
     "BY_CATEGORY": "By category",
     "BY_TABLE": "By table",
     "BY_WAITER": "By waiter",
+    "PAYMENT_METHODS_DAILY": "Revenue by day and payment method",
+    "TOP_PRODUCTS_BY_QUANTITY": "Best-selling products",
+    "DATE": "Date",
+    "TOTAL": "Total",
     "PRODUCT": "Product",
     "CATEGORY": "Category",
     "TABLE": "Table",
@@ -1464,6 +1470,29 @@
     "ATTENDANCE_REGISTRO_HORARIO_DOWNLOAD": "Download registro horario (ES)",
     "ATTENDANCE_REGISTRO_HORARIO_NO_DATA": "No staff with attendance in that month (or no records). Select staff or clock time first.",
     "ATTENDANCE_REGISTRO_HORARIO_ERROR": "Could not download the registro horario export. Try again."
+  },
+  "STAFF_LOG": {
+    "TITLE": "Staff action & error log",
+    "SUBTITLE": "Sensitive actions taken by staff, and backend errors, with filters.",
+    "ACTION_TYPE_LABEL": "Action type",
+    "ALL_ACTIONS": "All actions",
+    "ONLY_ERRORS": "Only errors",
+    "CLEAR_FILTERS": "Clear filters",
+    "EMPTY": "No log entries for this filter.",
+    "WHEN": "When",
+    "USER": "User",
+    "SUMMARY": "Summary",
+    "STATUS": "Status",
+    "OK": "OK",
+    "ERROR": "Error",
+    "ACTION_TYPE": {
+      "order_delete": "Order deleted",
+      "order_mark_paid": "Order marked as paid",
+      "order_cancel": "Order cancelled",
+      "order_item_remove": "Item removed from order",
+      "sri_invoice_issue": "SRI invoice issued",
+      "unhandled_error": "Unhandled backend error"
+    }
   },
   "TABLES": {
     "TITLE": "Tables",

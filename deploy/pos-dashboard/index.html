@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Red Chicken POS - Panel</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #ffffff; --text: #1c1e21; --muted: #6b7280;
+    --green: #16a34a; --red: #dc2626; --yellow: #d97706; --border: #e5e7eb;
+    --accent: #b91c1c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 12px; }
+  .status-hero { display: flex; align-items: center; gap: 14px; grid-column: 1 / -1; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+  .dot.on { background: var(--green); box-shadow: 0 0 0 4px rgba(22,163,74,.15); }
+  .dot.off { background: var(--red); box-shadow: 0 0 0 4px rgba(220,38,38,.15); }
+  .status-text { font-size: 18px; font-weight: 600; }
+  .status-detail { font-size: 13px; color: var(--muted); }
+  .actions { margin-left: auto; display: flex; gap: 8px; }
+  button {
+    border: none; border-radius: 8px; padding: 10px 16px; font-size: 14px; font-weight: 600;
+    cursor: pointer; color: white;
+  }
+  button:disabled { opacity: .5; cursor: wait; }
+  .btn-start { background: var(--green); }
+  .btn-stop { background: var(--red); }
+  .btn-restart { background: var(--yellow); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .pill.running { background: #dcfce7; color: #166534; }
+  .pill.exited, .pill.dead { background: #fee2e2; color: #991b1b; }
+  .pill.other { background: #fef3c7; color: #92400e; }
+  .kv { display: flex; justify-content: space-between; padding: 5px 0; font-size: 14px; border-bottom: 1px dashed var(--border); }
+  .kv:last-child { border-bottom: none; }
+  .kv .v { font-weight: 600; }
+  a { color: var(--accent); }
+  .link-url { word-break: break-all; }
+  .footer { margin-top: 18px; font-size: 12px; color: var(--muted); text-align: center; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: #111827; color: white; padding: 10px 18px; border-radius: 8px; font-size: 13px;
+    opacity: 0; transition: opacity .3s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+  .log-filters {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+    margin-bottom: 14px; font-size: 13px; color: var(--muted);
+  }
+  .log-filters label { display: flex; flex-direction: column; gap: 3px; }
+  .log-filters .log-errors-only { flex-direction: row; align-items: center; gap: 6px; }
+  .log-filters input, .log-filters select {
+    padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px;
+  }
+  .log-filters button { padding: 7px 12px; font-size: 13px; }
+  tr.log-row-error { background: #fef2f2; }
+  .log-error-detail { font-size: 12px; color: var(--red); margin-top: 2px; }
+  .stats-summary {
+    display: flex; flex-wrap: wrap; gap: 24px; margin-bottom: 14px;
+    font-size: 14px;
+  }
+  .stats-summary .stat b { display: block; font-size: 20px; color: var(--text); }
+  .stats-summary .stat span { color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+  <h1>Red Chicken POS</h1>
+  <div class="sub" id="updated">Cargando estado...</div>
+
+  <div class="grid">
+    <div class="card status-hero">
+      <div class="dot" id="statusDot"></div>
+      <div>
+        <div class="status-text" id="statusText">Consultando...</div>
+        <div class="status-detail" id="statusDetail"></div>
+      </div>
+      <div class="actions">
+        <button class="btn-start" id="btnStart" onclick="doAction('start')">Encender</button>
+        <button class="btn-restart" id="btnRestart" onclick="doAction('restart')">Reiniciar</button>
+        <button class="btn-stop" id="btnStop" onclick="confirmStop()">Apagar</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Contenedores</h2>
+      <table>
+        <thead><tr><th>Servicio</th><th>Estado</th><th>CPU</th><th>Memoria</th></tr></thead>
+        <tbody id="containersBody"><tr><td colspan="4">-</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Acceso remoto (Tailscale)</h2>
+      <div id="tailscaleBody">-</div>
+    </div>
+
+    <div class="card">
+      <h2>Disco</h2>
+      <div id="diskBody">-</div>
+    </div>
+
+    <div class="card">
+      <h2>Negocio (hoy)</h2>
+      <div id="businessBody">-</div>
+    </div>
+
+    <div class="card" style="grid-column: 1 / -1;">
+      <h2>Estadísticas del negocio</h2>
+      <div class="log-filters">
+        <label>Desde <input type="date" id="statsFrom"></label>
+        <label>Hasta <input type="date" id="statsTo"></label>
+        <label>Producto <select id="statsProduct"><option value="">Todos</option></select></label>
+        <button class="btn-restart" id="btnStatsFilter" onclick="loadBusinessStats()">Filtrar</button>
+        <button class="btn-start" id="btnStatsClear" onclick="clearBusinessStatsFilters()">Limpiar</button>
+      </div>
+      <div id="statsSummary" class="stats-summary">-</div>
+      <table>
+        <thead><tr><th>Producto</th><th>Cantidad</th><th>Ingresos</th></tr></thead>
+        <tbody id="statsByProductBody"><tr><td colspan="3">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card" style="grid-column: 1 / -1;">
+      <h2>Log de actuaciones y errores</h2>
+      <div class="log-filters">
+        <label>Desde <input type="date" id="logFrom"></label>
+        <label>Hasta <input type="date" id="logTo"></label>
+        <label>Tipo <select id="logActionType"><option value="">Todos</option></select></label>
+        <label class="log-errors-only"><input type="checkbox" id="logOnlyErrors"> Solo errores</label>
+        <button class="btn-restart" id="btnLogFilter" onclick="loadStaffLog()">Filtrar</button>
+        <button class="btn-start" id="btnLogClear" onclick="clearStaffLogFilters()">Limpiar</button>
+      </div>
+      <table>
+        <thead><tr><th>Cuándo</th><th>Usuario</th><th>Tipo</th><th>Resumen</th><th>Estado</th></tr></thead>
+        <tbody id="staffLogBody"><tr><td colspan="5">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="footer">Panel local · se actualiza cada 5s · http://127.0.0.1:8090</div>
+  <div class="toast" id="toast"></div>
+
+<script>
+let busy = false;
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function setButtons(disabled) {
+  document.getElementById('btnStart').disabled = disabled;
+  document.getElementById('btnRestart').disabled = disabled;
+  document.getElementById('btnStop').disabled = disabled;
+}
+
+function confirmStop() {
+  if (confirm('¿Apagar el POS? Los clientes/caja perderán acceso hasta que lo enciendas de nuevo.')) {
+    doAction('stop');
+  }
+}
+
+async function doAction(action) {
+  if (busy) return;
+  busy = true;
+  setButtons(true);
+  toast(action === 'start' ? 'Encendiendo...' : action === 'stop' ? 'Apagando...' : 'Reiniciando...');
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action }),
+    });
+    const data = await res.json();
+    toast(data.ok ? 'Listo.' : 'Hubo un error, revisa el detalle.');
+  } catch (e) {
+    toast('No se pudo contactar al panel.');
+  }
+  busy = false;
+  setButtons(false);
+  refresh();
+}
+
+function pillClass(state) {
+  if (state === 'running') return 'pill running';
+  if (state === 'exited' || state === 'dead') return 'pill exited';
+  return 'pill other';
+}
+
+function fmtBool(b) { return b ? 'Sí' : 'No'; }
+
+async function refresh() {
+  let data;
+  try {
+    const res = await fetch('/api/status');
+    data = await res.json();
+  } catch (e) {
+    document.getElementById('statusText').textContent = 'Panel sin respuesta';
+    return;
+  }
+
+  document.getElementById('updated').textContent = 'Actualizado ' + new Date().toLocaleTimeString();
+
+  const dot = document.getElementById('statusDot');
+  const text = document.getElementById('statusText');
+  const detail = document.getElementById('statusDetail');
+  if (data.overall_running && data.app_reachable) {
+    dot.className = 'dot on';
+    text.textContent = 'Encendido y respondiendo';
+  } else if (data.overall_running) {
+    dot.className = 'dot on';
+    text.textContent = 'Encendiendo... (compilando frontend)';
+  } else {
+    dot.className = 'dot off';
+    text.textContent = 'Apagado';
+  }
+  const runningCount = data.containers.filter(c => c.state === 'running').length;
+  detail.textContent = `${runningCount}/${data.containers.length} contenedores arriba`;
+
+  const body = document.getElementById('containersBody');
+  body.innerHTML = data.containers.map(c => `
+    <tr>
+      <td>${c.service}</td>
+      <td><span class="${pillClass(c.state)}">${c.state}</span></td>
+      <td>${c.cpu}</td>
+      <td>${c.mem}</td>
+    </tr>
+  `).join('') || '<tr><td colspan="4">Sin contenedores</td></tr>';
+
+  const ts = data.tailscale;
+  document.getElementById('tailscaleBody').innerHTML = `
+    <div class="kv"><span>Conectado</span><span class="v">${fmtBool(ts.connected)}</span></div>
+    <div class="kv"><span>IP tailnet</span><span class="v">${ts.ip || '-'}</span></div>
+    <div class="kv"><span>Funnel público</span><span class="v">${fmtBool(ts.funnel_active)}</span></div>
+    ${ts.public_url ? `<div class="kv"><span>URL</span><span class="v link-url"><a href="${ts.public_url}" target="_blank">${ts.public_url}</a></span></div>` : ''}
+  `;
+
+  const d = data.disk;
+  document.getElementById('diskBody').innerHTML = `
+    <div class="kv"><span>Disco usado</span><span class="v">${d.host_used_gb} / ${d.host_total_gb} GB (${d.host_used_percent}%)</span></div>
+    <div class="kv"><span>Disco libre</span><span class="v">${d.host_free_gb} GB</span></div>
+    <div class="kv"><span>Base de datos (volumen)</span><span class="v">${d.pg_volume_size || '-'}</span></div>
+  `;
+
+  const b = data.business;
+  document.getElementById('businessBody').innerHTML = b.error ? `<div class="kv"><span>Base de datos no disponible</span></div>` : `
+    <div class="kv"><span>Órdenes hoy</span><span class="v">${b.orders_today ?? '-'}</span></div>
+    <div class="kv"><span>Órdenes abiertas</span><span class="v">${b.open_orders ?? '-'}</span></div>
+    <div class="kv"><span>Ventas hoy</span><span class="v">$${b.revenue_today ?? '0.00'}</span></div>
+  `;
+}
+
+const ACTION_TYPE_LABELS = {
+  order_delete: 'Pedido eliminado',
+  order_mark_paid: 'Pedido marcado como pagado',
+  order_cancel: 'Pedido cancelado',
+  order_item_remove: 'Ítem removido del pedido',
+  sri_invoice_issue: 'Factura SRI emitida',
+  unhandled_error: 'Error inesperado del servidor',
+};
+function actionTypeLabel(t) { return ACTION_TYPE_LABELS[t] || t; }
+
+let staffLogTypesLoaded = false;
+
+function clearStaffLogFilters() {
+  document.getElementById('logFrom').value = '';
+  document.getElementById('logTo').value = '';
+  document.getElementById('logActionType').value = '';
+  document.getElementById('logOnlyErrors').checked = false;
+  loadStaffLog();
+}
+
+async function loadStaffLog() {
+  const body = document.getElementById('staffLogBody');
+  body.innerHTML = '<tr><td colspan="5">Cargando...</td></tr>';
+  const params = new URLSearchParams();
+  const from = document.getElementById('logFrom').value;
+  const to = document.getElementById('logTo').value;
+  const actionType = document.getElementById('logActionType').value;
+  const onlyErrors = document.getElementById('logOnlyErrors').checked;
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  if (actionType) params.set('action_type', actionType);
+  if (onlyErrors) params.set('only_errors', 'true');
+
+  let data;
+  try {
+    const res = await fetch('/api/staff-log?' + params.toString());
+    data = await res.json();
+  } catch (e) {
+    body.innerHTML = '<tr><td colspan="5">No se pudo cargar el log.</td></tr>';
+    return;
+  }
+  if (data.error) {
+    body.innerHTML = `<tr><td colspan="5">Error: ${data.error}</td></tr>`;
+    return;
+  }
+
+  if (!staffLogTypesLoaded) {
+    const select = document.getElementById('logActionType');
+    for (const t of data.action_types) {
+      const opt = document.createElement('option');
+      opt.value = t;
+      opt.textContent = actionTypeLabel(t);
+      select.appendChild(opt);
+    }
+    staffLogTypesLoaded = true;
+  }
+
+  if (!data.entries.length) {
+    body.innerHTML = '<tr><td colspan="5">Sin registros para este filtro.</td></tr>';
+    return;
+  }
+
+  body.innerHTML = data.entries.map(e => `
+    <tr class="${e.success ? '' : 'log-row-error'}">
+      <td>${new Date(e.created_at).toLocaleString()}</td>
+      <td>${e.user_email || '-'}</td>
+      <td>${actionTypeLabel(e.action_type)}</td>
+      <td>${e.summary || ''}${!e.success && e.error_message ? `<div class="log-error-detail">${e.error_message}</div>` : ''}</td>
+      <td><span class="${e.success ? 'pill running' : 'pill exited'}">${e.success ? 'OK' : 'Error'}</span></td>
+    </tr>
+  `).join('');
+}
+
+let statsProductsLoaded = false;
+
+function fmtMoney(cents) { return '$' + (cents / 100).toFixed(2); }
+
+function clearBusinessStatsFilters() {
+  const today = new Date().toISOString().slice(0, 10);
+  document.getElementById('statsFrom').value = today;
+  document.getElementById('statsTo').value = today;
+  document.getElementById('statsProduct').value = '';
+  loadBusinessStats();
+}
+
+async function loadBusinessStats() {
+  const summaryEl = document.getElementById('statsSummary');
+  const body = document.getElementById('statsByProductBody');
+  body.innerHTML = '<tr><td colspan="3">Cargando...</td></tr>';
+  const params = new URLSearchParams();
+  const from = document.getElementById('statsFrom').value;
+  const to = document.getElementById('statsTo').value;
+  const productId = document.getElementById('statsProduct').value;
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  if (productId) params.set('product_id', productId);
+
+  let data;
+  try {
+    const res = await fetch('/api/business-stats?' + params.toString());
+    data = await res.json();
+  } catch (e) {
+    summaryEl.textContent = 'No se pudo cargar las estadísticas.';
+    body.innerHTML = '';
+    return;
+  }
+  if (data.error) {
+    summaryEl.textContent = 'Error: ' + data.error;
+    body.innerHTML = '';
+    return;
+  }
+
+  if (!statsProductsLoaded) {
+    const select = document.getElementById('statsProduct');
+    for (const p of data.products) {
+      const opt = document.createElement('option');
+      opt.value = p.product_id;
+      opt.textContent = p.product_name;
+      select.appendChild(opt);
+    }
+    statsProductsLoaded = true;
+  }
+
+  const s = data.summary || { revenue_cents: 0, order_count: 0, quantity: 0 };
+  summaryEl.innerHTML = `
+    <div class="stat"><b>${fmtMoney(s.revenue_cents)}</b><span>Ingresos en el rango</span></div>
+    <div class="stat"><b>${s.order_count}</b><span>Pedidos</span></div>
+    <div class="stat"><b>${s.quantity}</b><span>Unidades vendidas</span></div>
+  `;
+
+  if (!data.by_product.length) {
+    body.innerHTML = '<tr><td colspan="3">Sin ventas para este filtro.</td></tr>';
+    return;
+  }
+  body.innerHTML = data.by_product.map(p => `
+    <tr>
+      <td>${p.product_name}</td>
+      <td>${p.quantity}</td>
+      <td>${fmtMoney(p.revenue_cents)}</td>
+    </tr>
+  `).join('');
+}
+
+refresh();
+loadStaffLog();
+clearBusinessStatsFilters();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

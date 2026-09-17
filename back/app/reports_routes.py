@@ -9,6 +9,7 @@ from collections import defaultdict
 from datetime import date, datetime, time, timedelta, timezone
 from io import BytesIO, StringIO
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
@@ -30,16 +31,37 @@ REVENUE_STATUSES = {models.OrderStatus.paid, models.OrderStatus.completed}
 # Item statuses we exclude from revenue
 EXCLUDED_ITEM_STATUSES = {models.OrderItemStatus.cancelled}
 
+# Fallback when Tenant.timezone isn't configured — better than silently treating everything
+# as UTC, which misattributes evening sales to the wrong calendar day for any tenant not on UTC.
+_DEFAULT_TZ = ZoneInfo("America/Guayaquil")
+
+
+def _tenant_zoneinfo(tenant: models.Tenant | None) -> ZoneInfo:
+    if tenant and tenant.timezone:
+        try:
+            return ZoneInfo(tenant.timezone)
+        except Exception:
+            pass
+    return _DEFAULT_TZ
+
 
 def _revenue_date(order: models.Order) -> datetime | None:
     """Date used for attributing revenue (paid_at if set, else created_at)."""
     return order.paid_at or order.created_at
 
 
-def _in_range(d: datetime | None, from_date: date, to_date: date) -> bool:
+def _local_date(d: datetime, tz: ZoneInfo) -> date:
+    """Convert a naive-UTC-stored datetime to the tenant's local calendar date — orders/
+    payments are stored in UTC, so comparing/grouping raw UTC dates misattributes evening
+    sales to the next day (or the reverse) for any tenant west of Greenwich."""
+    d_utc = d if d.tzinfo is not None else d.replace(tzinfo=timezone.utc)
+    return d_utc.astimezone(tz).date()
+
+
+def _in_range(d: datetime | None, from_date: date, to_date: date, tz: ZoneInfo) -> bool:
     if not d:
         return False
-    d_date = d.date() if hasattr(d, "date") else d
+    d_date = _local_date(d, tz) if hasattr(d, "date") else d
     return from_date <= d_date <= to_date
 
 
@@ -68,6 +90,7 @@ def _get_revenue_items(
     tenant_id: int,
     from_date: date,
     to_date: date,
+    tz: ZoneInfo,
 ):
     """Load orders and items that count toward revenue in the date range."""
     orders = session.exec(
@@ -81,7 +104,7 @@ def _get_revenue_items(
     result = []
     for order in orders:
         rev_date = _revenue_date(order)
-        if not _in_range(rev_date, from_date, to_date):
+        if not _in_range(rev_date, from_date, to_date, tz):
             continue
         items = session.exec(
             select(models.OrderItem)
@@ -111,7 +134,7 @@ def _get_revenue_items(
             cost_cents = item.quantity * unit_cost
             result.append({
                 "order_id": order.id,
-                "date": rev_date,
+                "date": _local_date(rev_date, tz),
                 "table_id": order.table_id,
                 "table_name": table_name,
                 "waiter_id": waiter_id,
@@ -125,6 +148,7 @@ def _get_revenue_items(
                 "cost_cents": cost_cents,
                 "revenue_cents": revenue_cents,
                 "profit_cents": revenue_cents - cost_cents,
+                "payment_method": order.payment_method or "unknown",
             })
     return result
 
@@ -133,7 +157,9 @@ def _build_report_payload(tenant_id: int, session: Session, from_date: date, to_
     """Build full report dict for a tenant and date range."""
     if from_date > to_date:
         from_date, to_date = to_date, from_date
-    rows = _get_revenue_items(session, tenant_id, from_date, to_date)
+    tenant = session.get(models.Tenant, tenant_id)
+    tz = _tenant_zoneinfo(tenant)
+    rows = _get_revenue_items(session, tenant_id, from_date, to_date, tz)
 
     tips_by_day: dict[str, int] = defaultdict(int)
     tips_by_waiter: dict[str, int] = defaultdict(int)
@@ -146,13 +172,13 @@ def _build_report_payload(tenant_id: int, session: Session, from_date: date, to_
     ).all()
     for order in orders_for_tips:
         rev_date = _revenue_date(order)
-        if not _in_range(rev_date, from_date, to_date):
+        if not _in_range(rev_date, from_date, to_date, tz):
             continue
         tip = int(order.tip_amount_cents or 0)
         if tip <= 0:
             continue
         total_tips_cents += tip
-        day = rev_date.strftime("%Y-%m-%d") if hasattr(rev_date, "strftime") else str(rev_date)[:10]
+        day = _local_date(rev_date, tz).isoformat() if hasattr(rev_date, "date") else str(rev_date)[:10]
         tips_by_day[day] += tip
         wn = _waiter_name_for_order_tips(session, order)
         tips_by_waiter[wn] += tip
@@ -182,6 +208,49 @@ def _build_report_payload(tenant_id: int, session: Session, from_date: date, to_
     total_cost_cents = sum(r["cost_cents"] for r in rows)
     total_profit_cents = total_revenue_cents - total_cost_cents
     total_orders = len(set(r["order_id"] for r in rows))
+
+    # By day + payment method (e.g. "how much cash vs. transfer came in each day") — long
+    # format (one row per day/method combo actually used) so the frontend can pivot freely
+    # instead of us guessing which methods matter enough to hardcode a column for.
+    by_day_method: dict[tuple[str, str], dict] = defaultdict(
+        lambda: {"revenue_cents": 0, "order_ids": set()}
+    )
+    for r in rows:
+        day = r["date"].strftime("%Y-%m-%d") if hasattr(r["date"], "strftime") else str(r["date"])[:10]
+        key = (day, r["payment_method"])
+        by_day_method[key]["revenue_cents"] += r["revenue_cents"]
+        by_day_method[key]["order_ids"].add(r["order_id"])
+    payment_methods_daily = [
+        {
+            "date": d,
+            "payment_method": m,
+            "revenue_cents": v["revenue_cents"],
+            "order_count": len(v["order_ids"]),
+        }
+        for (d, m), v in sorted(by_day_method.items())
+    ]
+
+    # By product, sorted by quantity sold (best-sellers) — separate from by_product below,
+    # which is sorted by revenue; a low-price high-volume item can top one and not the other.
+    by_product_qty: dict[tuple[int, str], dict] = defaultdict(
+        lambda: {"quantity": 0, "revenue_cents": 0, "category": ""}
+    )
+    for r in rows:
+        key = (r["product_id"], r["product_name"])
+        by_product_qty[key]["quantity"] += r["quantity"]
+        by_product_qty[key]["revenue_cents"] += r["revenue_cents"]
+        if not by_product_qty[key]["category"]:
+            by_product_qty[key]["category"] = r.get("category") or "Uncategorized"
+    top_products_by_quantity = [
+        {
+            "product_id": k[0],
+            "product_name": k[1],
+            "category": v["category"],
+            "quantity": v["quantity"],
+            "revenue_cents": v["revenue_cents"],
+        }
+        for k, v in sorted(by_product_qty.items(), key=lambda x: -x[1]["quantity"])
+    ]
 
     # By product
     by_product: dict[tuple[int, str], dict] = defaultdict(
@@ -327,6 +396,8 @@ def _build_report_payload(tenant_id: int, session: Session, from_date: date, to_
         },
         "reservations": reservations_summary,
         "by_product": by_product_list,
+        "top_products_by_quantity": top_products_by_quantity,
+        "payment_methods_daily": payment_methods_daily,
         "by_category": by_category_list,
         "by_table": by_table_list,
         "by_waiter": by_waiter_list,
@@ -728,3 +799,67 @@ def adjust_work_session_times(
     u = session.get(models.User, ws.user_id)
     name = (u.full_name or u.email or "") if u else ""
     return serialize_work_session(ws, name, session=session)
+
+
+def _staff_action_log_dict(row: "models.StaffActionLog") -> dict:
+    return {
+        "id": row.id,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "user_id": row.user_id,
+        "user_email": row.user_email,
+        "action_type": row.action_type,
+        "summary": row.summary,
+        "detail": row.detail,
+        "success": row.success,
+        "error_message": row.error_message,
+        "request_path": row.request_path,
+    }
+
+
+@router.get("/staff-action-log")
+@admin_user_limit()
+def get_staff_action_log(
+    request: Request,
+    response: Response,
+    current_user: Annotated[models.User, Depends(require_permission(Permission.REPORT_READ))],
+    session: Session = Depends(get_session),
+    from_date: date | None = Query(None, description="Start date (YYYY-MM-DD), tenant-local"),
+    to_date: date | None = Query(None, description="End date (YYYY-MM-DD), tenant-local, inclusive"),
+    action_type: str | None = Query(None),
+    only_errors: bool = Query(False, description="Only rows with success=false"),
+    user_id: int | None = Query(None),
+    limit: int = Query(200, ge=1, le=1000),
+) -> dict:
+    """Filtered staff action / error log for the admin panel."""
+    tenant = session.get(models.Tenant, current_user.tenant_id)
+    tz = _tenant_zoneinfo(tenant)
+
+    query = select(models.StaffActionLog).where(
+        models.StaffActionLog.tenant_id == current_user.tenant_id
+    )
+    if from_date is not None:
+        start_utc = datetime.combine(from_date, time.min, tzinfo=tz).astimezone(timezone.utc)
+        query = query.where(models.StaffActionLog.created_at >= start_utc)
+    if to_date is not None:
+        end_utc = datetime.combine(to_date + timedelta(days=1), time.min, tzinfo=tz).astimezone(timezone.utc)
+        query = query.where(models.StaffActionLog.created_at < end_utc)
+    if action_type:
+        query = query.where(models.StaffActionLog.action_type == action_type)
+    if only_errors:
+        query = query.where(models.StaffActionLog.success == False)  # noqa: E712
+    if user_id is not None:
+        query = query.where(models.StaffActionLog.user_id == user_id)
+
+    query = query.order_by(models.StaffActionLog.created_at.desc()).limit(limit)
+    rows = session.exec(query).all()
+
+    action_types = session.exec(
+        select(models.StaffActionLog.action_type)
+        .where(models.StaffActionLog.tenant_id == current_user.tenant_id)
+        .distinct()
+    ).all()
+
+    return {
+        "entries": [_staff_action_log_dict(r) for r in rows],
+        "action_types": sorted(action_types),
+    }

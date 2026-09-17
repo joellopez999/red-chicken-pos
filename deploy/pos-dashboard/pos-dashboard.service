@@ -1,0 +1,10 @@
+[Unit]
+Description=Panel local de estado/control para Red Chicken POS
+
+[Service]
+ExecStart=/usr/bin/python3 /home/imac/pos-dashboard/server.py
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
