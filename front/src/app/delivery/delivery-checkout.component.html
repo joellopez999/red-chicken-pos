@@ -284,7 +284,7 @@
           <p class="form-error">{{ cardError() }}</p>
         }
         <div class="delivery-pay-options">
-          @if (stripeReady()) {
+          @if (cardPaymentEnabled && stripeReady()) {
             <button
               type="button"
               class="btn btn-primary"
@@ -304,10 +304,31 @@
               {{ 'DELIVERY_CHECKOUT.PAY_REVOLUT' | translate }}
             </button>
           }
-          @if (!stripeReady() && !revolutConfigured()) {
+          @if (tenant()?.pickup_transfer_instructions) {
+            <button
+              type="button"
+              class="btn btn-primary"
+              [disabled]="processingPayment()"
+              (click)="payWithTransfer()"
+            >
+              {{ 'DELIVERY_CHECKOUT.PAY_TRANSFER' | translate }}
+            </button>
+          }
+          @if (!(cardPaymentEnabled && stripeReady()) && !revolutConfigured() && !tenant()?.pickup_transfer_instructions) {
             <p class="form-error">{{ 'DELIVERY_CHECKOUT.PAY_NOT_CONFIGURED' | translate }}</p>
           }
         </div>
+
+        @if (tenant()?.pickup_transfer_instructions) {
+          <div class="delivery-transfer-info">
+            <p class="delivery-hint" style="white-space: pre-line;">{{ tenant()!.pickup_transfer_instructions }}</p>
+            @if (transferReceiptWhatsAppUrl(); as waUrl) {
+              <a [href]="waUrl" target="_blank" rel="noopener noreferrer" class="btn btn-whatsapp">
+                {{ 'DELIVERY_CHECKOUT.PAY_TRANSFER_SEND_RECEIPT' | translate }}
+              </a>
+            }
+          </div>
+        }
 
         @if (showStripeForm()) {
           <div class="delivery-stripe-box">
@@ -328,10 +349,35 @@
         }
       }
 
+      @if (step() === 'transfer') {
+        <div class="delivery-success">
+          <h2>{{ 'DELIVERY_CHECKOUT.TRANSFER_STEP_TITLE' | translate }}</h2>
+          <p>{{ 'DELIVERY_CHECKOUT.SUCCESS_MESSAGE_TRANSFER' | translate }}</p>
+          @if (orderId(); as oid) {
+            <p class="delivery-order-ref">{{ 'DELIVERY_CHECKOUT.ORDER_REF' | translate: { id: oid } }}</p>
+          }
+          <p class="delivery-total">
+            <strong>{{ 'DELIVERY_CHECKOUT.TOTAL' | translate }}:</strong>
+            {{ formatCents(totalCents()) }}
+          </p>
+          <div class="delivery-transfer-info">
+            <p class="delivery-hint" style="white-space: pre-line;">{{ tenant()?.pickup_transfer_instructions }}</p>
+            @if (transferReceiptWhatsAppUrl(); as waUrl) {
+              <a [href]="waUrl" target="_blank" rel="noopener noreferrer" class="btn btn-whatsapp">
+                {{ 'DELIVERY_CHECKOUT.PAY_TRANSFER_SEND_RECEIPT' | translate }}
+              </a>
+            }
+          </div>
+          <button type="button" class="btn btn-primary" (click)="goToTrack()">
+            {{ 'DELIVERY_CHECKOUT.TRACK_ORDER' | translate }}
+          </button>
+        </div>
+      }
+
       @if (step() === 'success') {
         <div class="delivery-success">
           <h2>{{ 'DELIVERY_CHECKOUT.SUCCESS_TITLE' | translate }}</h2>
-          <p>{{ 'DELIVERY_CHECKOUT.SUCCESS_MESSAGE' | translate }}</p>
+          <p>{{ (paidByTransfer() ? 'DELIVERY_CHECKOUT.SUCCESS_MESSAGE_TRANSFER' : 'DELIVERY_CHECKOUT.SUCCESS_MESSAGE') | translate }}</p>
           @if (orderId(); as oid) {
             <p class="delivery-order-ref">{{ 'DELIVERY_CHECKOUT.ORDER_REF' | translate: { id: oid } }}</p>
           }

@@ -132,9 +132,17 @@ export class MenuComponent implements OnInit, OnDestroy {
   pinError = signal('');
   private currentPin = '';  // Stored after successful validation
 
+  // Pickup (take-away) payment intent — asked once per order, before the PIN gate (which
+  // take-away tables skip entirely) so staff can see upfront whether to expect a transfer.
+  isTakeAwayTable = signal(false);
+  pickupTransferInstructions = signal<string | null>(null);
+  transferWhatsappPhone = signal<string | null>(null);
+  showPickupPaymentModal = signal(false);
+  pickupPaymentChoice: 'pickup' | 'transfer' | null = null;
+
   // Payment options
   showPaymentOptions = signal(false);
-  paymentOptionsStep = signal<'choose' | 'stripe' | 'message' | 'success'>('choose');
+  paymentOptionsStep = signal<'choose' | 'stripe' | 'message' | 'success' | 'transfer'>('choose');
   paymentMessageTarget = signal<'waiter' | 'cash' | 'card_terminal' | null>(null);
   paymentMessage = signal('');
   paymentRequestSending = signal(false);
@@ -306,6 +314,13 @@ export class MenuComponent implements OnInit, OnDestroy {
         // Table session status
         this.tableIsActive.set(data.table_is_active !== false);  // Default true for backward compatibility
         this.tableRequiresPin.set(data.table_requires_pin === true);
+        this.isTakeAwayTable.set(data.is_take_away_table === true);
+        this.pickupTransferInstructions.set(data.pickup_transfer_instructions || null);
+        this.transferWhatsappPhone.set(data.transfer_whatsapp_phone || null);
+        const storedPickupPayment = sessionStorage.getItem(`pickup_payment_${this.tableToken}`);
+        if (storedPickupPayment === 'pickup' || storedPickupPayment === 'transfer') {
+          this.pickupPaymentChoice = storedPickupPayment;
+        }
 
         // Check if the table session has changed (table was closed and reopened).
         // If active_order_id differs from what we stored, clear stale data and
@@ -617,9 +632,15 @@ export class MenuComponent implements OnInit, OnDestroy {
   }
 
   /** Build WhatsApp wa.me link from phone string (e.g. +34 612 345 678 -> https://wa.me/34612345678). */
-  getWhatsAppUrl(phone: string): string {
+  getWhatsAppUrl(phone: string, message?: string): string {
     const digits = (phone || '').replace(/\D/g, '');
-    return `https://wa.me/${digits}`;
+    return message ? `https://wa.me/${digits}?text=${encodeURIComponent(message)}` : `https://wa.me/${digits}`;
+  }
+
+  transferReceiptWhatsAppUrl(): string | null {
+    const phone = this.transferWhatsappPhone();
+    if (!phone) return null;
+    return this.getWhatsAppUrl(phone, this.translate.instant('MENU.PICKUP_PAYMENT_WHATSAPP_MESSAGE'));
   }
 
   getProductImageUrl(product: Product): string | null {
@@ -987,8 +1008,26 @@ export class MenuComponent implements OnInit, OnDestroy {
       return;
     }
 
+    // Pickup: ask once per session how the customer intends to pay, so staff see it upfront
+    if (this.isTakeAwayTable() && !this.pickupPaymentChoice) {
+      this.showPickupPaymentModal.set(true);
+      return;
+    }
+
     // Proceed with order submission
     this.doSubmitOrder();
+  }
+
+  // Pickup payment modal handlers
+  choosePickupPayment(choice: 'pickup' | 'transfer') {
+    this.pickupPaymentChoice = choice;
+    sessionStorage.setItem(`pickup_payment_${this.tableToken}`, choice);
+    this.showPickupPaymentModal.set(false);
+    this.doSubmitOrder();
+  }
+
+  cancelPickupPaymentModal() {
+    this.showPickupPaymentModal.set(false);
   }
 
   // PIN Modal handlers
@@ -1038,10 +1077,20 @@ export class MenuComponent implements OnInit, OnDestroy {
       // Location denied or unavailable - continue without it
     }
 
+    // Tag the pickup payment intent onto the order notes so staff see it immediately in
+    // Pedidos — there's no separate field for it; this is the only channel that reaches them.
+    let notes = this.orderNotes.trim();
+    if (this.isTakeAwayTable() && this.pickupPaymentChoice) {
+      const tag = this.pickupPaymentChoice === 'transfer'
+        ? this.translate.instant('MENU.PICKUP_PAYMENT_TAG_TRANSFER')
+        : this.translate.instant('MENU.PICKUP_PAYMENT_TAG_PICKUP');
+      notes = notes ? `${tag} ${notes}` : tag;
+    }
+
     this.submitting.set(true);
     this.api.submitOrder(this.tableToken, {
       items,
-      notes: this.orderNotes.trim() || undefined,
+      notes: notes || undefined,
       session_id: this.sessionId,
       customer_name: this.customerName() || undefined,
       pin: this.currentPin || undefined,
@@ -1257,7 +1306,7 @@ export class MenuComponent implements OnInit, OnDestroy {
   }
 
   cancelOrder(orderId: number) {
-    if (!confirm('Are you sure you want to cancel this entire order?')) {
+    if (!confirm(this.translate.instant('MENU.CONFIRM_CANCEL_ORDER'))) {
       return;
     }
 
@@ -1265,16 +1314,16 @@ export class MenuComponent implements OnInit, OnDestroy {
       next: () => {
         this.placedOrders.set([]);
         localStorage.removeItem(`orders_${this.tableToken}`);
-        alert('Order cancelled');
+        alert(this.translate.instant('MENU.ORDER_CANCELLED'));
       },
       error: (err) => {
-        const errorMsg = err.error?.detail || 'Failed to cancel order';
+        const errorMsg: string = err.error?.detail || '';
         if (errorMsg.includes('delivered')) {
-          alert('Cannot cancel order with delivered items');
+          alert(this.translate.instant('MENU.CANCEL_FAILED_DELIVERED'));
         } else if (errorMsg.includes('preparing') || errorMsg.includes('ready')) {
-          alert('Cannot cancel order with items that are being prepared or ready');
+          alert(this.translate.instant('MENU.CANCEL_FAILED_PREPARING'));
         } else {
-          alert(errorMsg);
+          alert(errorMsg || this.translate.instant('MENU.CANCEL_FAILED'));
         }
       }
     });
@@ -1375,6 +1424,25 @@ export class MenuComponent implements OnInit, OnDestroy {
   selectPayCard() {
     this.paymentMessageTarget.set('card_terminal');
     this.paymentOptionsStep.set('message');
+  }
+
+  selectPayOnPickup() {
+    this.closePaymentOptions();
+  }
+
+  selectPayTransfer() {
+    if (!this.currentOrderId || !this.tableToken) return;
+    this.paymentRequestSending.set(true);
+    this.api.confirmTransferPayment(this.currentOrderId, this.tableToken).subscribe({
+      next: () => {
+        this.paymentRequestSending.set(false);
+        this.paymentOptionsStep.set('transfer');
+      },
+      error: (err) => {
+        this.paymentRequestSending.set(false);
+        alert(err.error?.detail || this.translate.instant('PAYMENTS.PAYMENT_FAILED'));
+      },
+    });
   }
 
   selectCallWaiter() {

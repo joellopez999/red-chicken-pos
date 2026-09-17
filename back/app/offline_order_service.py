@@ -8,15 +8,9 @@ from sqlmodel import Session, select
 
 from app import models
 from app.delivery_order_service import _add_order_items, _resolve_product_lines
+from app.take_away import is_take_away_table as _is_take_away_table
 
-TAKE_AWAY_TABLE_NAMES = ("take away", "home ordering", "takeaway", "take-away")
 VALID_PAYMENT_INTENTS = frozenset({"cash", "card"})
-
-
-def _is_take_away_table(table: models.Table | None) -> bool:
-    if not table or not getattr(table, "name", None):
-        return False
-    return (table.name or "").strip().lower() in TAKE_AWAY_TABLE_NAMES
 
 
 def create_offline_cash_order(

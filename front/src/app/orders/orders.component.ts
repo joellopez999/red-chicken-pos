@@ -1080,12 +1080,14 @@ ModuleRegistry.registerModules([
                       <label class="modifier-label">{{ 'ORDERS.ITEM_NOTES' | translate }}</label>
                       <textarea class="form-input modifier-textarea" rows="2" [(ngModel)]="addItemNotes" name="addItemNotes"
                         [placeholder]="'ORDERS.ITEM_NOTES_PLACEHOLDER' | translate" maxlength="500"></textarea>
-                      <label class="modifier-label">{{ 'ORDERS.LINE_MODIFIERS_REMOVE' | translate }}</label>
-                      <input type="text" class="form-input" [(ngModel)]="addItemModifiersRemove" name="addModRem" [placeholder]="'ORDERS.LINE_MODIFIERS_REMOVE_PLACEHOLDER' | translate" />
-                      <label class="modifier-label">{{ 'ORDERS.LINE_MODIFIERS_ADD' | translate }}</label>
-                      <input type="text" class="form-input" [(ngModel)]="addItemModifiersAdd" name="addModAdd" [placeholder]="'ORDERS.LINE_MODIFIERS_ADD_PLACEHOLDER' | translate" />
-                      <label class="modifier-label">{{ 'ORDERS.LINE_MODIFIERS_SUBSTITUTE' | translate }}</label>
-                      <textarea class="form-input modifier-textarea" rows="2" [(ngModel)]="addItemModifiersSubstitute" name="addModSub" [placeholder]="'ORDERS.LINE_MODIFIERS_SUBSTITUTE_PLACEHOLDER' | translate"></textarea>
+                      @if (order.table_token) {
+                        <label class="modifier-label">{{ 'ORDERS.LINE_MODIFIERS_REMOVE' | translate }}</label>
+                        <input type="text" class="form-input" [(ngModel)]="addItemModifiersRemove" name="addModRem" [placeholder]="'ORDERS.LINE_MODIFIERS_REMOVE_PLACEHOLDER' | translate" />
+                        <label class="modifier-label">{{ 'ORDERS.LINE_MODIFIERS_ADD' | translate }}</label>
+                        <input type="text" class="form-input" [(ngModel)]="addItemModifiersAdd" name="addModAdd" [placeholder]="'ORDERS.LINE_MODIFIERS_ADD_PLACEHOLDER' | translate" />
+                        <label class="modifier-label">{{ 'ORDERS.LINE_MODIFIERS_SUBSTITUTE' | translate }}</label>
+                        <textarea class="form-input modifier-textarea" rows="2" [(ngModel)]="addItemModifiersSubstitute" name="addModSub" [placeholder]="'ORDERS.LINE_MODIFIERS_SUBSTITUTE_PLACEHOLDER' | translate"></textarea>
+                      }
                     </div>
                   </div>
                 }
@@ -4036,7 +4038,11 @@ export class OrdersComponent implements OnInit, OnDestroy {
   }
 
   canAddItemsToOrder(order: Order): boolean {
-    return !!(order.table_id != null && order.table_token && order.status !== 'paid' && order.status !== 'cancelled');
+    if (order.status === 'paid' || order.status === 'cancelled') return false;
+    if (order.table_id != null && order.table_token) return true;
+    // Delivery orders have no table/PIN to route through the public menu-order endpoint —
+    // addItemToEditOrder() falls back to the staff-only POST /orders/{id}/items for these.
+    return order.order_channel === 'satisfecho_delivery';
   }
 
   updateEditItemQuantity(orderId: number, itemId: number, quantity: number) {
@@ -4060,38 +4066,58 @@ export class OrdersComponent implements OnInit, OnDestroy {
 
   addItemToEditOrder() {
     const order = this.editOrder();
-    if (!order?.table_token || !this.addItemProductId || this.addItemQuantity < 1 || !this.staffMenuToken) return;
+    if (!order || !this.addItemProductId || this.addItemQuantity < 1) return;
+
+    if (order.table_token) {
+      if (!this.staffMenuToken) return;
+      this.addingItem.set(true);
+      const lm = this.buildLineModifiersFromStrings(
+        this.addItemModifiersRemove,
+        this.addItemModifiersAdd,
+        this.addItemModifiersSubstitute,
+      );
+      const row: OrderItemCreate = {
+        product_id: this.addItemProductId,
+        quantity: this.addItemQuantity,
+        source: 'tenant_product',
+      };
+      const note = this.addItemNotes.trim();
+      if (note) row.notes = note;
+      if (lm) row.line_modifiers = lm;
+      this.api.submitOrder(order.table_token, { items: [row], staff_access: this.staffMenuToken }).subscribe({
+        next: () => this.onAddItemToEditOrderSuccess(order.id),
+        error: () => this.onAddItemToEditOrderError(),
+      });
+      return;
+    }
+
+    // No table/PIN to route through (delivery order) — staff-only endpoint instead.
     this.addingItem.set(true);
-    const lm = this.buildLineModifiersFromStrings(
-      this.addItemModifiersRemove,
-      this.addItemModifiersAdd,
-      this.addItemModifiersSubstitute,
-    );
-    const row: OrderItemCreate = {
-      product_id: this.addItemProductId,
-      quantity: this.addItemQuantity,
-      source: 'tenant_product',
-    };
     const note = this.addItemNotes.trim();
-    if (note) row.notes = note;
-    if (lm) row.line_modifiers = lm;
-    const items: OrderItemCreate[] = [row];
-    this.api.submitOrder(order.table_token, { items, staff_access: this.staffMenuToken }).subscribe({
-      next: () => {
-        this.addingItem.set(false);
-        this.addItemProductId = null;
-        this.addItemQuantity = 1;
-        this.addItemNotes = '';
-        this.addItemModifiersRemove = '';
-        this.addItemModifiersAdd = '';
-        this.addItemModifiersSubstitute = '';
-        this.refreshEditOrder(order.id);
-      },
-      error: () => {
-        this.addingItem.set(false);
-        this.showToast(this.translate.instant('ORDERS.FAILED_TO_UPDATE_ITEM'), 'error');
-      }
-    });
+    this.api
+      .addOrderItemsStaff(order.id, [
+        { product_id: this.addItemProductId, quantity: this.addItemQuantity, notes: note || undefined },
+      ])
+      .subscribe({
+        next: () => this.onAddItemToEditOrderSuccess(order.id),
+        error: () => this.onAddItemToEditOrderError(),
+      });
+  }
+
+  private onAddItemToEditOrderSuccess(orderId: number) {
+    this.addingItem.set(false);
+    this.addItemProductId = null;
+    this.addItemQuantity = 1;
+    this.addItemNotes = '';
+    this.addItemModifiersRemove = '';
+    this.addItemModifiersAdd = '';
+    this.addItemModifiersSubstitute = '';
+    this.refreshEditOrder(orderId);
+  }
+
+  private onAddItemToEditOrderError() {
+    this.addingItem.set(false);
+    this.showToast(this.translate.instant('ORDERS.FAILED_TO_UPDATE_ITEM'), 'error');
   }
 
   saveEditOrderBilling() {

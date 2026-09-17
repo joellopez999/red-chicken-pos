@@ -659,6 +659,8 @@ export interface TenantSummary {
   public_google_maps_url?: string | null;
   /** Token for take-away/home ordering when a table is configured (e.g. named "Take away"). */
   take_away_table_token?: string | null;
+  pickup_transfer_instructions?: string | null;
+  transfer_whatsapp_phone?: string | null;
   /** Reservation rules (public book and reservation view; mirrors backend TenantSummary). */
   reservation_prepayment_cents?: number | null;
   reservation_prepayment_text?: string | null;
@@ -1740,6 +1742,9 @@ export interface MenuResponse {
   table_is_active?: boolean;
   table_requires_pin?: boolean;
   active_order_id?: number | null;
+  is_take_away_table?: boolean;
+  pickup_transfer_instructions?: string | null;
+  transfer_whatsapp_phone?: string | null;
   products: Product[];
 }
 
@@ -1800,6 +1805,8 @@ export interface TenantSettings {
   delivery_radius_meters?: number | null;
   /** JSON array string of allowed postal codes, or empty to clear */
   delivery_postal_codes?: string | null;
+  /** Shown to customers on the take-away/pickup ordering page when paying by bank transfer */
+  pickup_transfer_instructions?: string | null;
   // Per-tenant SMTP / email (optional; fallback to global config)
   smtp_host?: string | null;
   smtp_port?: number | null;
@@ -3266,6 +3273,19 @@ export class ApiService {
     return this.http.put(`${this.apiUrl}/orders/${orderId}/items/${itemId}`, { quantity });
   }
 
+  /** Staff: add new product lines to an already-created order (any channel, incl. delivery —
+   * the table-order "add item" flow instead reuses the public menu-order endpoint, which needs
+   * a table/token that delivery orders don't have). */
+  addOrderItemsStaff(
+    orderId: number,
+    items: { product_id: number; quantity: number; notes?: string | null }[],
+  ): Observable<{ status: string; order_id: number; new_total_cents: number }> {
+    return this.http.post<{ status: string; order_id: number; new_total_cents: number }>(
+      `${this.apiUrl}/orders/${orderId}/items`,
+      { items },
+    );
+  }
+
   /** Staff: quantity, notes, and/or line_modifiers (omit fields you do not change). */
   updateOrderItemStaff(
     orderId: number,
@@ -3441,6 +3461,23 @@ export class ApiService {
     }
     return this.http.post<{ status: string; order_id: number }>(
       `${this.apiUrl}/orders/${orderId}/confirm-revolut-payment?${params.toString()}`,
+      {},
+    );
+  }
+
+  confirmTransferPayment(
+    orderId: number,
+    tableToken: string | null,
+    publicOrderToken?: string | null,
+  ): Observable<{ status: string; order_id: number }> {
+    const params = new URLSearchParams();
+    if (publicOrderToken) {
+      params.set('public_order_token', publicOrderToken);
+    } else if (tableToken) {
+      params.set('table_token', tableToken);
+    }
+    return this.http.post<{ status: string; order_id: number }>(
+      `${this.apiUrl}/orders/${orderId}/confirm-transfer-payment?${params.toString()}`,
       {},
     );
   }

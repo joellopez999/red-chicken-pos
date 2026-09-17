@@ -1655,6 +1655,22 @@ import { MAX_IMAGE_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_MB } from '../shared/image-upl
                     ></textarea>
                     <p class="hint">{{ 'SETTINGS.DELIVERY_POSTAL_CODES_HINT' | translate }}</p>
                   </div>
+
+                  <div class="divider"></div>
+                  <h3>{{ 'SETTINGS.PICKUP_TITLE' | translate }}</h3>
+                  <p class="section-desc">{{ 'SETTINGS.PICKUP_DESC' | translate }}</p>
+                  <div class="form-group">
+                    <label for="pickup_transfer_instructions">{{ 'SETTINGS.PICKUP_TRANSFER_INSTRUCTIONS' | translate }}</label>
+                    <textarea
+                      id="pickup_transfer_instructions"
+                      rows="4"
+                      maxlength="1000"
+                      [(ngModel)]="formData.pickup_transfer_instructions"
+                      name="pickup_transfer_instructions"
+                      [placeholder]="'SETTINGS.PICKUP_TRANSFER_INSTRUCTIONS_PH' | translate"
+                    ></textarea>
+                    <p class="hint">{{ 'SETTINGS.PICKUP_TRANSFER_INSTRUCTIONS_HINT' | translate }}</p>
+                  </div>
                 </div>
               }
 
@@ -3370,6 +3386,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
     delivery_fee_cents: 0,
     delivery_radius_meters: null,
     delivery_postal_codes: null,
+    pickup_transfer_instructions: null as string | null,
     public_google_review_url: null,
     public_google_maps_url: null,
     public_openstreetmap_url: null,
@@ -3505,6 +3522,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
           delivery_fee_cents: settings.delivery_fee_cents ?? 0,
           delivery_radius_meters: settings.delivery_radius_meters ?? null,
           delivery_postal_codes: this.formatDeliveryPostalCodesForForm(settings.delivery_postal_codes),
+          pickup_transfer_instructions: settings.pickup_transfer_instructions ?? null,
           public_google_review_url: settings.public_google_review_url ?? null,
           public_google_maps_url: settings.public_google_maps_url ?? null,
           public_openstreetmap_url: settings.public_openstreetmap_url ?? null,

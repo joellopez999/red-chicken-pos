@@ -73,12 +73,13 @@ def product_subcategories(session: Session, tenant_id: int) -> dict[str, set[str
     categories: dict[str, set[str]] = {}
     for product in products:
         cat = (product.category or "").strip()
-        sub = (product.subcategory or "").strip()
-        if not cat or not sub:
+        if not cat:
             continue
+        sub = (product.subcategory or "").strip()
         if cat not in categories:
             categories[cat] = set()
-        categories[cat].add(sub)
+        if sub:
+            categories[cat].add(sub)
     return categories
 
 

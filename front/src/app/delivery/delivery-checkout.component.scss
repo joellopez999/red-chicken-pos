@@ -190,6 +190,14 @@
   max-width: 20rem;
 }
 
+.delivery-transfer-info {
+  margin-top: 1rem;
+  max-width: 24rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
 .delivery-stripe-box {
   margin-top: 1.25rem;
   max-width: 24rem;

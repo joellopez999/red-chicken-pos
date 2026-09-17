@@ -33,7 +33,7 @@ interface CartLine {
   quantity: number;
 }
 
-type CheckoutStep = 'menu' | 'cart' | 'address' | 'pay' | 'success';
+type CheckoutStep = 'menu' | 'cart' | 'address' | 'pay' | 'transfer' | 'success';
 
 @Component({
   selector: 'app-delivery-checkout',
@@ -83,11 +83,14 @@ export class DeliveryCheckoutComponent implements OnInit, OnDestroy {
   deliveryFeeCents = signal(0);
   revolutConfigured = signal(false);
   stripeReady = signal(false);
+  // Card payments aren't wired up to a real Stripe account yet — hide the button until they are.
+  readonly cardPaymentEnabled = false;
 
   showStripeForm = signal(false);
   processingPayment = signal(false);
   cardError = signal('');
   paymentSuccess = signal(false);
+  paidByTransfer = signal(false);
 
   private stripe: any = null;
   private cardElement: any = null;
@@ -328,6 +331,7 @@ export class DeliveryCheckoutComponent implements OnInit, OnDestroy {
     this.totalCents.set(0);
     this.showStripeForm.set(false);
     this.paymentSuccess.set(false);
+    this.paidByTransfer.set(false);
     this.cardError.set('');
     this.formError.set(null);
     this.customerName = '';
@@ -438,6 +442,40 @@ export class DeliveryCheckoutComponent implements OnInit, OnDestroy {
         );
       },
     });
+  }
+
+  payWithTransfer(): void {
+    const oid = this.orderId();
+    const token = this.publicOrderToken();
+    if (!oid || !token) return;
+    this.processingPayment.set(true);
+    this.cardError.set('');
+    this.api.confirmTransferPayment(oid, null, token).subscribe({
+      next: () => {
+        this.processingPayment.set(false);
+        this.paymentSuccess.set(true);
+        this.paidByTransfer.set(true);
+        this.cart.set([]);
+        // Stay on a dedicated step (not the generic success screen) so the account details and
+        // WhatsApp link remain visible — the customer needs them AFTER placing the order, once
+        // they've actually made the transfer.
+        this.step.set('transfer');
+      },
+      error: (err) => {
+        this.processingPayment.set(false);
+        this.cardError.set(
+          err.error?.detail || this.translate.instant('DELIVERY_CHECKOUT.PAY_FAILED'),
+        );
+      },
+    });
+  }
+
+  transferReceiptWhatsAppUrl(): string | null {
+    const phone = (this.tenant()?.transfer_whatsapp_phone || '').trim();
+    if (!phone) return null;
+    const digits = phone.replace(/\D/g, '');
+    const message = this.translate.instant('DELIVERY_CHECKOUT.PAY_TRANSFER_WHATSAPP_MESSAGE');
+    return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
   }
 
   payWithStripe(): void {

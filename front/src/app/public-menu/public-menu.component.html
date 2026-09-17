@@ -64,6 +64,11 @@
         <a [routerLink]="['/delivery', tenantId()]" class="btn btn-primary">
           {{ 'PUBLIC_MENU.ORDER_DELIVERY' | translate }}
         </a>
+        @if (tenant()?.take_away_table_token) {
+          <a [routerLink]="['/menu', tenant()!.take_away_table_token!]" class="btn btn-secondary">
+            {{ 'PUBLIC_MENU.ORDER_PICKUP' | translate }}
+          </a>
+        }
       </p>
 
       @if (menuLoading()) {

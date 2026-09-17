@@ -17,6 +17,7 @@ from xml.sax.saxutils import escape
 
 import barcode as barcode_lib
 from barcode.writer import ImageWriter
+from fastapi import HTTPException
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -235,6 +236,8 @@ def _forma_pago(order: models.Order) -> str:
     method = (order.payment_method or "").lower()
     if method in ("stripe", "revolut", "terminal", "card"):
         return "19"  # tarjeta de crédito (approximate; confirm current Tabla 24 if this matters to reporting)
+    if method == "transfer":
+        return "20"  # otros con utilización del sistema financiero (no dedicated "transferencia" code in Tabla 24)
     return "01"
 
 
@@ -321,6 +324,31 @@ def generar_ride_pdf(comprobante: models.SriComprobante) -> BytesIO:
     doc.build(elements)
     buffer.seek(0)
     return buffer
+
+
+def assert_order_sri_invoice_mutable(session: Session, tenant_id: int, order_id: int) -> None:
+    """Block item edits/removals once an SRI comprobante for this order was authorized (AUT).
+
+    The authorized XML is a fixed legal document — the SRI has no "edit" operation, only a
+    separate nota de crédito (out of scope, see docs/0075). Changing items on the POS order
+    after AUT would silently desync it from what was actually invoiced, so this must be
+    checked wherever staff can add/update/remove order items (mirrors the Spain VeriFactu
+    equivalent, assert_order_fiscally_mutable, which does not know about SriComprobante).
+    """
+    row = session.exec(
+        select(models.SriComprobante).where(
+            models.SriComprobante.order_id == order_id,
+            models.SriComprobante.tenant_id == tenant_id,
+        )
+    ).first()
+    if row and row.estado == "AUT":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Order has an authorized SRI invoice and its items cannot be changed. "
+                "Issue a nota de crédito or a new manual invoice for any correction."
+            ),
+        )
 
 
 def sri_comprobante_by_order_ids(session: Session, order_ids: list[int]) -> dict[int, models.SriComprobante]:

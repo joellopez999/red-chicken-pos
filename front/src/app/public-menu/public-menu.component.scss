@@ -32,6 +32,8 @@
 .public-menu-delivery-cta {
   display: flex;
   justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
   margin: 0 0 var(--space-6);
 }
 

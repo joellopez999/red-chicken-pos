@@ -78,6 +78,7 @@ from .fiscal_invoice_service import (
     order_fiscal_amount_cents,
 )
 from .sri_invoice_service import (
+    assert_order_sri_invoice_mutable,
     generar_clave_acceso,
     generar_ride_pdf,
     generar_xml_factura,
@@ -86,6 +87,7 @@ from .sri_invoice_service import (
 )
 from .sri_providers import enviar_recepcion
 from .sri_signing import EC_TZ, load_p12, sign_factura_xml
+from .take_away import is_take_away_table as _is_take_away_table
 from . import tenant_secrets
 from .tse_service import (
     assert_tse_mode_allowed,
@@ -877,6 +879,10 @@ class TenantSummary(_BaseModel):
     opening_hours: str | None = None
     public_background_color: str | None = None
     take_away_table_token: str | None = None  # Token for take-away/home ordering if a table is configured
+    # Bank transfer payment option (pickup and delivery checkout): free-text account info +
+    # WhatsApp number the customer sends the receipt to. Either/both may be unset.
+    pickup_transfer_instructions: str | None = None
+    transfer_whatsapp_phone: str | None = None
     # Reservation rules (for book page and reservation view)
     reservation_prepayment_cents: int | None = None
     reservation_prepayment_text: str | None = None
@@ -899,16 +905,6 @@ class TenantSummary(_BaseModel):
     guest_birthday_capture_enabled: bool = True
     guest_birthday_marketing_enabled: bool = False
     guest_birthday_consent_text: str | None = None
-
-
-TAKE_AWAY_TABLE_NAMES = ("take away", "home ordering", "takeaway", "take-away")
-
-
-def _is_take_away_table(table) -> bool:
-    """True if table name indicates take-away/home ordering (no PIN required for ordering)."""
-    if not table or not getattr(table, "name", None):
-        return False
-    return (table.name or "").strip().lower() in TAKE_AWAY_TABLE_NAMES
 
 
 # Staff menu link: time-limited signed token so staff can open public menu without PIN
@@ -1136,6 +1132,8 @@ def _tenant_to_summary(t: models.Tenant, session: Session) -> TenantSummary:
         opening_hours=t.opening_hours,
         public_background_color=t.public_background_color,
         take_away_table_token=take_away_token,
+        pickup_transfer_instructions=t.pickup_transfer_instructions,
+        transfer_whatsapp_phone=t.transfer_whatsapp_phone,
         reservation_prepayment_cents=t.reservation_prepayment_cents,
         reservation_prepayment_text=t.reservation_prepayment_text,
         reservation_cancellation_policy=t.reservation_cancellation_policy,
@@ -1229,6 +1227,8 @@ def get_public_tenant(
         "opening_hours": summary.opening_hours,
         "public_background_color": summary.public_background_color,
         "take_away_table_token": summary.take_away_table_token,
+        "pickup_transfer_instructions": summary.pickup_transfer_instructions,
+        "transfer_whatsapp_phone": summary.transfer_whatsapp_phone,
         "reservation_prepayment_cents": summary.reservation_prepayment_cents,
         "reservation_prepayment_text": summary.reservation_prepayment_text,
         "reservation_cancellation_policy": summary.reservation_cancellation_policy,
@@ -4333,6 +4333,10 @@ def update_tenant_settings(
                 tenant_update.resend_api_key.strip()[:255], tenant_secrets.RESEND_API_KEY_DOMAIN
             )
         # Empty = keep existing
+    if tenant_update.pickup_transfer_instructions is not None:
+        tenant.pickup_transfer_instructions = tenant_update.pickup_transfer_instructions.strip()[:1000] or None
+    if tenant_update.transfer_whatsapp_phone is not None:
+        tenant.transfer_whatsapp_phone = tenant_update.transfer_whatsapp_phone.strip()[:20] or None
 
     # Per-tenant SMTP / email (optional; fallback to global config)
     if tenant_update.smtp_host is not None:
@@ -12615,6 +12619,9 @@ def get_menu(
         or (staff_access and _verify_staff_menu_token(table.token, staff_access))
         else (table.is_active and table.order_pin is not None),
         "active_order_id": table.active_order_id,
+        "is_take_away_table": _is_take_away_table(table),
+        "pickup_transfer_instructions": (tenant.pickup_transfer_instructions or None) if tenant else None,
+        "transfer_whatsapp_phone": (tenant.transfer_whatsapp_phone or None) if tenant else None,
         "products": products_list,
     }
 
@@ -14286,6 +14293,7 @@ def update_order_status(
 
     if status_update.status == models.OrderStatus.cancelled:
         assert_order_fiscally_mutable(session, current_user.tenant_id, order.id)
+        assert_order_sri_invoice_mutable(session, current_user.tenant_id, order.id)
         order.cancelled_at = datetime.now(timezone.utc)
         order.cancelled_by = "staff"
 
@@ -14758,6 +14766,7 @@ def delete_order(
     if order.deleted_at is not None:
         raise HTTPException(status_code=400, detail="Order is already deleted")
     assert_order_fiscally_mutable(session, current_user.tenant_id, order.id)
+    assert_order_sri_invoice_mutable(session, current_user.tenant_id, order.id)
 
     order.deleted_at = datetime.now(timezone.utc)
     order.deleted_by_user_id = current_user.id
@@ -14781,7 +14790,7 @@ def delete_order(
 def set_order_billing_customer(
     order_id: int,
     body: models.OrderBillingCustomerSet,
-    current_user: Annotated[models.User, Depends(require_permission(Permission.ORDER_READ))],
+    current_user: Annotated[models.User, Depends(require_permission(Permission.ORDER_UPDATE_STATUS))],
     session: Session = Depends(get_session)
 ) -> dict:
     """Set or clear the billing customer (Factura) for an order."""
@@ -14796,6 +14805,7 @@ def set_order_billing_customer(
     if order.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Order not found")
     assert_order_fiscally_mutable(session, current_user.tenant_id, order.id)
+    assert_order_sri_invoice_mutable(session, current_user.tenant_id, order.id)
     customer_id = body.billing_customer_id
     if customer_id is not None:
         customer = session.get(models.BillingCustomer, customer_id)
@@ -15728,6 +15738,7 @@ def cancel_order_item_staff(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     assert_order_fiscally_mutable(session, current_user.tenant_id, order.id)
+    assert_order_sri_invoice_mutable(session, current_user.tenant_id, order.id)
 
     item = session.exec(
         select(models.OrderItem).where(
@@ -15810,7 +15821,8 @@ def update_order_item_staff(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     assert_order_fiscally_mutable(session, current_user.tenant_id, order.id)
-    
+    assert_order_sri_invoice_mutable(session, current_user.tenant_id, order.id)
+
     item = session.exec(
         select(models.OrderItem).where(
             models.OrderItem.id == item_id,
@@ -15884,6 +15896,68 @@ def update_order_item_staff(
     }
 
 
+@app.post("/orders/{order_id}/items")
+def add_order_items_staff(
+    order_id: int,
+    body: models.AddOrderItemsRequest,
+    current_user: Annotated[models.User, Depends(require_permission(Permission.ORDER_REMOVE_ITEM))],
+    session: Session = Depends(get_session),
+) -> dict:
+    """Staff: add new product lines to an already-created order (any channel — table, delivery,
+    manual invoice). The table-order "add item" flow instead reuses the public menu-order
+    endpoint (staff_access bypasses the PIN), which needs a table/token that delivery orders
+    don't have — this is the channel-agnostic staff path for that case."""
+    order = session.exec(
+        select(models.Order).where(
+            models.Order.id == order_id,
+            models.Order.tenant_id == current_user.tenant_id,
+        )
+    ).first()
+    if not order or order.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.status in (models.OrderStatus.paid, models.OrderStatus.cancelled):
+        raise HTTPException(status_code=400, detail="Cannot add items to a paid or cancelled order")
+    if not body.items:
+        raise HTTPException(status_code=400, detail="At least one item is required")
+    assert_order_fiscally_mutable(session, current_user.tenant_id, order.id)
+    assert_order_sri_invoice_mutable(session, current_user.tenant_id, order.id)
+
+    from app.delivery_order_service import _add_order_items, _resolve_product_lines
+
+    lines = [{"product_id": it.product_id, "quantity": it.quantity, "notes": it.notes} for it in body.items]
+    resolved_lines, err = _resolve_product_lines(session, tenant_id=current_user.tenant_id, lines=lines)
+    if err:
+        detail = err.get("detail", "invalid_items")
+        if str(detail).startswith("product_not_found"):
+            raise HTTPException(status_code=400, detail=f"Product not found: {detail.split(':', 1)[-1]}")
+        raise HTTPException(status_code=400, detail=str(detail))
+    assert resolved_lines is not None
+
+    order_date = order.created_at.date() if order.created_at else date.today()
+    _add_order_items(
+        session, order=order, tenant_id=current_user.tenant_id, resolved_lines=resolved_lines, order_date=order_date
+    )
+
+    all_items = session.exec(select(models.OrderItem).where(models.OrderItem.order_id == order.id)).all()
+    order.status = compute_order_status_from_items(all_items)
+    session.add(order)
+    session.commit()
+    session.refresh(order)
+
+    active_items = [i for i in all_items if not i.removed_by_customer and i.removed_by_user_id is None]
+    new_total = sum(i.price_cents * i.quantity for i in active_items)
+
+    table = session.get(models.Table, order.table_id) if order.table_id else None
+    publish_order_update(current_user.tenant_id, {
+        "type": "items_added",
+        "order_id": order.id,
+        "table_name": table.name if table else (order.customer_name or "Delivery"),
+        "new_total_cents": new_total,
+    }, table_id=order.table_id)
+
+    return {"status": "items_added", "order_id": order.id, "new_total_cents": new_total}
+
+
 @app.delete("/orders/{order_id}/items/{item_id}")
 def remove_order_item_staff(
     order_id: int,
@@ -15903,6 +15977,7 @@ def remove_order_item_staff(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     assert_order_fiscally_mutable(session, current_user.tenant_id, order.id)
+    assert_order_sri_invoice_mutable(session, current_user.tenant_id, order.id)
 
     item = session.exec(
         select(models.OrderItem).where(
@@ -16294,6 +16369,7 @@ def _revolut_retrieve_order(secret: str, revolut_order_id: str) -> dict:
 )
 def create_payment_intent(
     request: Request,
+    response: Response,
     order_id: int,
     table_token: str | None = None,
     public_order_token: str | None = None,
@@ -16376,6 +16452,7 @@ def create_payment_intent(
 )
 def confirm_payment(
     request: Request,
+    response: Response,
     order_id: int,
     payment_intent_id: str,
     table_token: str | None = None,
@@ -16487,6 +16564,7 @@ def confirm_payment(
 )
 def create_revolut_order(
     request: Request,
+    response: Response,
     order_id: int,
     table_token: str | None = None,
     public_order_token: str | None = None,
@@ -16591,6 +16669,7 @@ def create_revolut_order(
 )
 def confirm_revolut_payment(
     request: Request,
+    response: Response,
     order_id: int,
     table_token: str | None = None,
     public_order_token: str | None = None,
@@ -16697,3 +16776,55 @@ def confirm_revolut_payment(
     )
 
     return {"status": "paid", "order_id": order.id}
+
+
+@app.post("/orders/{order_id}/confirm-transfer-payment")
+@limiter.limit(f"{getattr(settings, 'rate_limit_payment_per_minute', 10)}/minute")
+@limiter.limit(
+    f"{getattr(settings, 'rate_limit_payment_per_order_per_hour', 3)}/hour",
+    key_func=_rate_limit_key_payment_order,
+)
+def confirm_transfer_payment(
+    request: Request,
+    response: Response,
+    order_id: int,
+    table_token: str | None = None,
+    public_order_token: str | None = None,
+    session: Session = Depends(get_session),
+) -> dict:
+    """Guest chose to pay by bank transfer — either a public Satisfecho Delivery order
+    (public_order_token) or a table order, e.g. the take-away/pickup table (table_token).
+
+    Unlike Stripe/Revolut, no gateway confirms this automatically — the customer sends the
+    receipt over WhatsApp. So this does NOT mark the order paid; it records the stated intent
+    (payment_method) and, for delivery, notifies kitchen immediately (same as a successful
+    online payment — table orders are already visible to kitchen from creation, no equivalent
+    notify needed). Staff marks it paid the normal way (Pedidos) once the transfer is confirmed.
+    """
+    order, table, display_name = _resolve_guest_payment_order(
+        session, order_id, table_token=table_token, public_order_token=public_order_token
+    )
+    if order.payment_method is None:
+        order.payment_method = "transfer"
+        order.notes = f"{order.notes or ''}\n[Pago: transferencia — verificar comprobante]".strip()
+        session.add(order)
+        session.commit()
+        session.refresh(order)
+
+        if table is None and _order_channel_value(order) == models.OrderChannel.satisfecho_delivery.value:
+            from app.delivery_order_service import publish_satisfecho_delivery_order
+
+            publish_satisfecho_delivery_order(session, order)
+
+    publish_order_update(
+        order.tenant_id,
+        {
+            "type": "order_update",
+            "order_id": order.id,
+            "table_name": display_name,
+            "status": order.status.value,
+        },
+        table_id=order.table_id,
+    )
+
+    return {"status": "ok", "order_id": order.id}

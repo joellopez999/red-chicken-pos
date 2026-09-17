@@ -274,6 +274,14 @@ class Tenant(SQLModel, table=True):
     # email, automatically once AUT and via a manual resend button. Reuses email_from/email_from_name.
     resend_api_key: str | None = Field(default=None, max_length=255)
 
+    # Shown to the customer on the pickup and delivery checkout pages when they choose to pay
+    # by bank transfer (free text: account, alias, holder name, etc. — payment methods vary
+    # too much locally to model as separate structured fields).
+    pickup_transfer_instructions: str | None = Field(default=None, max_length=1000)
+    # WhatsApp number (any format the tenant wants to type) the customer is told to send the
+    # transfer receipt to; used to build a wa.me link with a pre-filled message.
+    transfer_whatsapp_phone: str | None = Field(default=None, max_length=20)
+
     # Platform SaaS subscription (Satisfecho paywall — not restaurant guest payments)
     # none | trialing | active | canceled | past_due | grandfathered
     saas_subscription_status: str = Field(default="grandfathered", max_length=32)
@@ -1875,6 +1883,20 @@ class OrderItemStaffUpdate(SQLModel):
     line_modifiers: dict[str, Any] | None = None
 
 
+class AddOrderItemLine(SQLModel):
+    """One new line for POST /orders/{order_id}/items (staff adding a product to an
+    already-created order — e.g. a delivery order, which has no table/PIN to route
+    through the public menu-order endpoint the table-order "add item" flow reuses)."""
+
+    product_id: int
+    quantity: int = 1
+    notes: str | None = None
+
+
+class AddOrderItemsRequest(SQLModel):
+    items: list[AddOrderItemLine]
+
+
 class TenantUpdate(SQLModel):
     name: str | None = None
     business_type: BusinessType | None = None
@@ -1994,6 +2016,8 @@ class TenantUpdate(SQLModel):
     sri_punto_emision: str | None = Field(default=None, max_length=3)
     sri_obligado_contabilidad: bool | None = None
     resend_api_key: str | None = None
+    pickup_transfer_instructions: str | None = None
+    transfer_whatsapp_phone: str | None = None
 
 
 class TenantProductCreate(SQLModel):

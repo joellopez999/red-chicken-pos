@@ -151,6 +151,18 @@
     <section class="customer-orders-section" aria-label="Your orders">
       <h2 class="customer-orders-heading">{{ 'MENU.CURRENT_ORDER' | translate }}</h2>
 
+      @if (placedOrders().length > 0 && pickupPaymentChoice === 'transfer' && pickupTransferInstructions()) {
+      <div class="no-order-card">
+        <p class="no-order-title">{{ 'MENU.PICKUP_PAYMENT_TRANSFER' | translate }}</p>
+        <p class="no-order-hint" style="white-space: pre-line;">{{ pickupTransferInstructions() }}</p>
+        @if (transferReceiptWhatsAppUrl(); as waUrl) {
+          <a [href]="waUrl" target="_blank" rel="noopener noreferrer" class="btn-whatsapp" style="display: inline-block; text-decoration: none; margin-top: 0.5rem;">
+            {{ 'MENU.PICKUP_PAYMENT_SEND_RECEIPT' | translate }}
+          </a>
+        }
+      </div>
+      }
+
       @if (placedOrders().length === 0) {
       <div class="no-order-card">
         <p class="no-order-title">{{ 'MENU.NO_ACTIVE_ORDER' | translate }}</p>
@@ -882,6 +894,44 @@
   </div>
   }
 
+  <!-- Pickup payment intent modal (take-away tables only) -->
+  @if (showPickupPaymentModal()) {
+  <div class="modal-overlay">
+    <div class="modal-sheet" (click)="$event.stopPropagation()">
+      <div class="modal-handle">
+        <span class="handle-bar"></span>
+      </div>
+      <div class="modal-content">
+        <h3 class="modal-title">{{ 'MENU.PICKUP_PAYMENT_TITLE' | translate }}</h3>
+        <p class="modal-subtitle">{{ 'MENU.PICKUP_PAYMENT_HINT' | translate }}</p>
+        <div class="modal-actions" style="flex-direction: column; gap: 0.5rem;">
+          <button class="btn-primary" (click)="choosePickupPayment('pickup')">
+            {{ 'MENU.PICKUP_PAYMENT_ON_PICKUP' | translate }}
+          </button>
+          @if (pickupTransferInstructions()) {
+          <button class="btn-secondary" (click)="choosePickupPayment('transfer')">
+            {{ 'MENU.PICKUP_PAYMENT_TRANSFER' | translate }}
+          </button>
+          }
+        </div>
+        @if (pickupTransferInstructions()) {
+          <p class="modal-subtitle" style="margin-top: 0.75rem; white-space: pre-line;">
+            {{ pickupTransferInstructions() }}
+          </p>
+          @if (transferReceiptWhatsAppUrl()) {
+            <a [href]="transferReceiptWhatsAppUrl()!" target="_blank" rel="noopener noreferrer" class="btn-whatsapp" style="display: block; text-align: center; text-decoration: none; margin-top: 0.5rem;">
+              {{ 'MENU.PICKUP_PAYMENT_SEND_RECEIPT' | translate }}
+            </a>
+          }
+        }
+        <div class="modal-actions">
+          <button class="btn-secondary" (click)="cancelPickupPaymentModal()">{{ 'COMMON.CANCEL' | translate }}</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  }
+
   <!-- Payment Options Sheet -->
   @if (showPaymentOptions()) {
   <div class="modal-overlay">
@@ -906,6 +956,49 @@
           <span class="payment-value">{{ formatPrice(paymentAmount()) }}</span>
         </div>
 
+        @if (isTakeAwayTable()) {
+        <div class="payment-options-list">
+          <button class="payment-option-btn" (click)="selectPayOnPickup()">
+            <div class="payment-option-icon">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="2" y="6" width="20" height="12" rx="1" />
+                <circle cx="12" cy="12" r="3" />
+                <circle cx="5" cy="12" r="1" />
+                <circle cx="19" cy="12" r="1" />
+              </svg>
+            </div>
+            <div class="payment-option-text">
+              <span class="payment-option-title">{{ 'MENU.PICKUP_PAYMENT_ON_PICKUP' | translate }}</span>
+            </div>
+            <svg class="payment-option-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="9,18 15,12 9,6" />
+            </svg>
+          </button>
+
+          @if (pickupTransferInstructions()) {
+          <button class="payment-option-btn" (click)="selectPayTransfer()" [disabled]="paymentRequestSending()">
+            <div class="payment-option-icon">
+              @if (paymentRequestSending()) {
+              <span class="spinner-small"></span>
+              } @else {
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+                <line x1="1" y1="10" x2="23" y2="10" />
+              </svg>
+              }
+            </div>
+            <div class="payment-option-text">
+              <span class="payment-option-title">{{ 'MENU.PICKUP_PAYMENT_TRANSFER' | translate }}</span>
+            </div>
+            @if (!paymentRequestSending()) {
+            <svg class="payment-option-arrow" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="9,18 15,12 9,6" />
+            </svg>
+            }
+          </button>
+          }
+        </div>
+        } @else {
         <div class="payment-options-list">
           <button class="payment-option-btn" (click)="selectPayOnline()" [disabled]="paymentRequestSending()">
             <div class="payment-option-icon">
@@ -1006,6 +1099,7 @@
           </button>
         </div>
         }
+        }
 
         @if (paymentOptionsStep() === 'message') {
         <div appFocusFirstInput>
@@ -1075,6 +1169,21 @@
               {{ 'PAYMENTS.PAYMENT_REQUESTED_DESC' | translate }}
             }
           </p>
+          <div class="modal-actions">
+            <button class="btn-primary full-width" (click)="closePaymentOptions()">{{ 'MENU.DONE' | translate }}</button>
+          </div>
+        </div>
+        }
+
+        @if (paymentOptionsStep() === 'transfer') {
+        <div class="payment-request-success">
+          <h3 class="modal-title">{{ 'MENU.PICKUP_PAYMENT_TRANSFER' | translate }}</h3>
+          <p class="modal-subtitle" style="white-space: pre-line;">{{ pickupTransferInstructions() }}</p>
+          @if (transferReceiptWhatsAppUrl(); as waUrl) {
+            <a [href]="waUrl" target="_blank" rel="noopener noreferrer" class="btn-whatsapp" style="display: block; text-align: center; text-decoration: none; margin-top: 0.5rem;">
+              {{ 'MENU.PICKUP_PAYMENT_SEND_RECEIPT' | translate }}
+            </a>
+          }
           <div class="modal-actions">
             <button class="btn-primary full-width" (click)="closePaymentOptions()">{{ 'MENU.DONE' | translate }}</button>
           </div>

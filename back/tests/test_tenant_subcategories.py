@@ -117,6 +117,25 @@ class TestTenantSubcategories(PgClientTestCase):
         merged = tenant_categories_for_ui(self.session, self.tenant_id)
         self.assertIn("Daily Soup", merged.get("Starters", []))
 
+    def test_custom_category_without_subcategory_still_appears(self):
+        """Regression: a tenant-only category (e.g. "Chicken Tenders") used on products that
+        have no subcategory set must still show up in the category dropdown — it was silently
+        dropped before because product_subcategories() only registered categories that had at
+        least one product with a non-empty subcategory."""
+        self.session.add(
+            models.Product(
+                tenant_id=self.tenant_id,
+                name="Tenders 3 pzas",
+                price_cents=450,
+                category="Chicken Tenders",
+                subcategory=None,
+            )
+        )
+        self.session.commit()
+        merged = tenant_categories_for_ui(self.session, self.tenant_id)
+        self.assertIn("Chicken Tenders", merged)
+        self.assertEqual(merged["Chicken Tenders"], [])
+
 
 if __name__ == "__main__":
     unittest.main()
