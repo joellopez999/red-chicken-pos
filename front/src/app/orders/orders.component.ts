@@ -1018,7 +1018,7 @@ ModuleRegistry.registerModules([
                 <div class="edit-order-items">
                   <div class="edit-order-label">{{ 'ORDERS.ITEMS' | translate }}</div>
                   @for (item of getSortedItems(order.items); track item.id) {
-                    @if (!item.removed_by_customer) {
+                    @if (!item.removed_by_customer && item.status !== 'cancelled') {
                       <div class="edit-order-item-block">
                         <div class="edit-order-row">
                           <span class="edit-item-name">{{ item.product_name }}</span>
@@ -3263,7 +3263,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
 
   /** Full order edit widget: add/remove/change items, billing, print. Same modal from cards and history. */
   editOrder = signal<Order | null>(null);
-  editOrderTenantProducts = signal<TenantProduct[]>([]);
+  editOrderTenantProducts = signal<Product[]>([]);
   editOrderBillingCustomers = signal<BillingCustomer[]>([]);
   editOrderBillingId: number | null = null;
 
@@ -4079,7 +4079,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
       const row: OrderItemCreate = {
         product_id: this.addItemProductId,
         quantity: this.addItemQuantity,
-        source: 'tenant_product',
+        source: 'product',
       };
       const note = this.addItemNotes.trim();
       if (note) row.notes = note;
@@ -4684,8 +4684,12 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.modifierEditRemove = '';
     this.modifierEditAdd = '';
     this.modifierEditSubstitute = '';
-    this.api.getTenantProducts(true).subscribe({
-      next: list => this.editOrderTenantProducts.set(list),
+    // GET /products (not /tenant-products): tenants that manage their menu directly as
+    // Product rows — the common case — have zero TenantProduct rows, which left this
+    // dropdown empty. /products already includes catalog-imported items too (materialized
+    // as Product rows), so this covers both setups, same source as "Nuevo pedido a domicilio".
+    this.api.getProducts().subscribe({
+      next: list => this.editOrderTenantProducts.set(list.filter(p => p.id != null)),
       error: () => this.editOrderTenantProducts.set([])
     });
     this.api.getBillingCustomers().subscribe({
