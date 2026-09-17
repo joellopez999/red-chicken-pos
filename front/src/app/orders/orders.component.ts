@@ -1597,6 +1597,93 @@ ModuleRegistry.registerModules([
           </div>
         }
 
+        <!-- View Order Modal (read-only, nicer layout than the grid row) -->
+        @if (viewOrder(); as vOrder) {
+          <div class="modal-overlay" (click)="closeViewOrderModal()">
+            <div class="modal modal-view-order" (click)="$event.stopPropagation()">
+              <div class="modal-header">
+                <h3>{{ 'ORDERS.ORDER_ID' | translate }}{{ vOrder.id }}</h3>
+                <button class="icon-btn" (click)="closeViewOrderModal()">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="modal-body">
+                <div class="view-order-meta">
+                  <div><span class="view-order-meta-label">{{ 'ORDERS.GRID.DATE' | translate }}</span><span>{{ formatOrderDateTime(vOrder.created_at) }}</span></div>
+                  <div><span class="view-order-meta-label">{{ 'ORDERS.GRID.CUSTOMER' | translate }}</span><span>{{ vOrder.customer_name || vOrder.table_name || '-' }}</span></div>
+                  <div><span class="view-order-meta-label">{{ 'ORDERS.GRID.STATUS' | translate }}</span><span>{{ ('ORDER_STATUS.' + vOrder.status) | translate }}</span></div>
+                  <div><span class="view-order-meta-label">{{ 'ORDERS.GRID.PAYMENT_METHOD' | translate }}</span><span>{{ vOrder.payment_method ? (('PAYMENT_METHOD.' + vOrder.payment_method) | translate) : '-' }}</span></div>
+                  @if (vOrder.payment_reference) {
+                    <div><span class="view-order-meta-label">{{ 'ORDERS.PAYMENT_REFERENCE' | translate }}</span><span>{{ vOrder.payment_reference }}</span></div>
+                  }
+                  @if (vOrder.delivery_address) {
+                    <div><span class="view-order-meta-label">{{ 'ORDERS.DELIVERY_ADDRESS' | translate }}</span><span>{{ vOrder.delivery_address }}</span></div>
+                  }
+                </div>
+
+                <table class="view-order-items">
+                  <thead>
+                    <tr>
+                      <th>{{ 'ORDERS.GRID.ITEMS' | translate }}</th>
+                      <th class="num">{{ 'COMMON.QUANTITY' | translate }}</th>
+                      <th class="num">{{ 'ORDERS.GRID.TOTAL' | translate }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (item of vOrder.items; track item.id) {
+                      @if (!item.removed_by_customer) {
+                        <tr>
+                          <td>
+                            {{ item.product_name }}
+                            @if (item.customization_summary || item.notes) {
+                              <div class="view-order-item-notes">{{ item.customization_summary }}{{ item.customization_summary && item.notes ? ' · ' : '' }}{{ item.notes }}</div>
+                            }
+                          </td>
+                          <td class="num">{{ item.quantity }}</td>
+                          <td class="num">{{ formatPrice(item.price_cents * item.quantity) }}</td>
+                        </tr>
+                      }
+                    }
+                  </tbody>
+                </table>
+
+                <div class="view-order-totals">
+                  <div><span>{{ 'ORDERS.SUBTOTAL' | translate }}</span><span>{{ formatPrice(viewOrderSubtotalCents(vOrder)) }}</span></div>
+                  @if (vOrder.tax_cents) {
+                    <div><span>{{ 'ORDERS.TAX' | translate }}</span><span>{{ formatPrice(vOrder.tax_cents) }}</span></div>
+                  }
+                  @if (vOrder.tip_amount_cents) {
+                    <div><span>{{ 'ORDERS.TIP' | translate }}</span><span>{{ formatPrice(vOrder.tip_amount_cents) }}</span></div>
+                  }
+                  <div class="view-order-total-final"><span>{{ 'ORDERS.GRID.TOTAL' | translate }}</span><span>{{ formatPrice(vOrder.total_cents) }}</span></div>
+                </div>
+
+                @if (vOrder.sri_comprobante) {
+                  <div class="view-order-sri">
+                    <span class="view-order-meta-label">{{ 'ORDERS.GRID.INVOICED' | translate }}</span>
+                    <span>{{ ('ORDERS.SRI_ESTADO.' + vOrder.sri_comprobante.estado) | translate }}</span>
+                    @if (vOrder.sri_comprobante.numero_autorizacion) {
+                      <span class="view-order-sri-auth">{{ vOrder.sri_comprobante.numero_autorizacion }}</span>
+                    }
+                    @if (vOrder.sri_comprobante.estado === 'AUT') {
+                      <button type="button" class="btn btn-secondary btn-sm" (click)="downloadSriRide(vOrder)">{{ 'ORDERS.SRI_DOWNLOAD_RIDE' | translate }}</button>
+                      <button type="button" class="btn btn-secondary btn-sm" (click)="sendSriInvoiceEmail(vOrder)" [disabled]="sendingSriInvoiceEmail()">
+                        {{ vOrder.sri_comprobante.email_sent_at ? ('ORDERS.SRI_RESEND_EMAIL' | translate) : ('ORDERS.SRI_SEND_EMAIL' | translate) }}
+                      </button>
+                    }
+                  </div>
+                }
+              </div>
+              <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" (click)="closeViewOrderModal(); openEditOrderModal(vOrder)">{{ 'ORDERS.EDIT_ORDER' | translate }}</button>
+                <button type="button" class="btn btn-primary" (click)="closeViewOrderModal()">{{ 'COMMON.CLOSE' | translate }}</button>
+              </div>
+            </div>
+          </div>
+        }
+
         <!-- Mark as Paid / Finish order Modal -->
         @if (orderToMarkPaid()) {
           <div class="modal-overlay">
@@ -1632,100 +1719,6 @@ ModuleRegistry.registerModules([
                     {{ 'ORDERS.LOYALTY_DISCOUNT' | translate }}:
                     −{{ formatPrice(orderToMarkPaid()!.loyalty_discount_cents || 0) }}
                   </p>
-                }
-                @if (canRedeemLoyalty() && !(orderToMarkPaid()!.loyalty_units_redeemed)) {
-                  <div class="form-group" data-testid="loyalty-redeem-block">
-                    <label for="loyalty-member-token">{{ 'ORDERS.LOYALTY_MEMBER_TOKEN' | translate }}</label>
-                    <input
-                      id="loyalty-member-token"
-                      type="text"
-                      class="form-control"
-                      [(ngModel)]="loyaltyRedeemToken"
-                      name="loyaltyRedeemToken"
-                      [placeholder]="'ORDERS.LOYALTY_MEMBER_TOKEN_HINT' | translate"
-                    />
-                    <button
-                      type="button"
-                      class="btn btn-secondary"
-                      style="margin-top: 0.5rem"
-                      [disabled]="!loyaltyRedeemToken.trim() || loyaltyRedeeming()"
-                      (click)="redeemLoyaltyForPaymentOrder()"
-                    >
-                      {{ 'ORDERS.LOYALTY_REDEEM' | translate }}
-                    </button>
-                    @if (loyaltyRedeemError()) {
-                      <p class="modal-hint" style="color:#b00020">{{ loyaltyRedeemError() }}</p>
-                    }
-                  </div>
-                }
-                @if (tipEntryModeOverpayment() || tipPresetsForPayment().length > 0) {
-                  <div class="payment-collapsible">
-                    <button
-                      type="button"
-                      class="payment-collapsible-header"
-                      (click)="paymentTipSectionExpanded.set(!paymentTipSectionExpanded())"
-                      [attr.aria-expanded]="paymentTipSectionExpanded()"
-                    >
-                      <svg class="payment-collapsible-chevron" [class.open]="paymentTipSectionExpanded()" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <polyline points="9 6 15 12 9 18" />
-                      </svg>
-                      <span>{{ 'ORDERS.TIP' | translate }}</span>
-                      @if (!paymentTipSectionExpanded() && paymentTipPercent > 0) {
-                        <span class="payment-collapsible-summary">{{ paymentTipPercent }}%</span>
-                      }
-                    </button>
-                    @if (paymentTipSectionExpanded()) {
-                      @if (tipEntryModeOverpayment()) {
-                        <p class="modal-hint">{{ 'ORDERS.OVERPAYMENT_PAYMENT_HINT' | translate }}</p>
-                        <div class="form-group">
-                          <label for="payment-amount-charged">{{ 'ORDERS.AMOUNT_CHARGED' | translate }}</label>
-                          <input
-                            id="payment-amount-charged"
-                            type="text"
-                            inputmode="decimal"
-                            class="form-control"
-                            [(ngModel)]="paymentAmountPaidInput"
-                            (ngModelChange)="onPaymentAmountPaidChange()"
-                            name="paymentAmountPaid"
-                          />
-                        </div>
-                        <div class="form-group">
-                          <label for="payment-tip-amount">{{ 'ORDERS.TIP_AMOUNT_EDIT' | translate }}</label>
-                          <input
-                            id="payment-tip-amount"
-                            type="text"
-                            inputmode="decimal"
-                            class="form-control"
-                            [(ngModel)]="paymentTipAmountInput"
-                            name="paymentTipAmount"
-                          />
-                        </div>
-                        <p class="modal-hint payment-tip-preview">
-                          {{ 'ORDERS.TIP_AMOUNT' | translate }}: {{ formatPrice(paymentTipAmountDisplayCents()) }}
-                          — {{ 'ORDERS.AMOUNT_DUE' | translate }}: {{ formatPrice(paymentOverpaymentGrandTotalCents()) }}
-                        </p>
-                      } @else {
-                        <div class="form-group payment-tip-group">
-                          <div class="tip-preset-buttons">
-                            <button type="button" class="btn btn-sm" [class.btn-primary]="paymentTipPercent === 0" [class.btn-secondary]="paymentTipPercent !== 0" (click)="paymentTipPercent = 0">
-                              {{ 'ORDERS.TIP_NONE' | translate }}
-                            </button>
-                            @for (p of tipPresetsForPayment(); track p) {
-                              <button type="button" class="btn btn-sm" [class.btn-primary]="paymentTipPercent === p" [class.btn-secondary]="paymentTipPercent !== p" (click)="paymentTipPercent = p">
-                                {{ p }}%
-                              </button>
-                            }
-                          </div>
-                          @if (paymentTipPercent > 0) {
-                            <p class="modal-hint payment-tip-preview">
-                              {{ 'ORDERS.TIP_AMOUNT' | translate }}: {{ formatPrice(paymentTipPreviewCents(orderToMarkPaid()!)) }}
-                              — {{ 'ORDERS.AMOUNT_DUE' | translate }}: {{ formatPrice(paymentGrandTotalCents(orderToMarkPaid()!)) }}
-                            </p>
-                          }
-                        </div>
-                      }
-                    }
-                  </div>
                 }
                 @if (paymentModalFinishMode()) {
                   <p class="modal-hint">{{ 'ORDERS.FINISH_ORDER_HELP' | translate }}</p>
@@ -1838,10 +1831,25 @@ ModuleRegistry.registerModules([
                   <select id="payment-method" [(ngModel)]="paymentMethod" class="form-select">
                     <option value="cash">{{ 'ORDERS.CASH' | translate }}</option>
                     <option value="terminal">{{ 'ORDERS.CARD_TERMINAL' | translate }}</option>
+                    <option value="transfer">{{ 'PAYMENT_METHOD.transfer' | translate }}</option>
                     <option value="stripe">{{ 'ORDERS.STRIPE_ONLINE' | translate }}</option>
                     <option value="other">{{ 'ORDERS.OTHER' | translate }}</option>
                   </select>
                 </div>
+                @if (paymentMethod === 'transfer') {
+                  <div class="form-group">
+                    <label for="payment-reference">{{ 'ORDERS.PAYMENT_REFERENCE' | translate }}</label>
+                    <input
+                      id="payment-reference"
+                      type="text"
+                      class="form-control"
+                      [(ngModel)]="paymentReference"
+                      name="paymentReference"
+                      maxlength="100"
+                      [placeholder]="'ORDERS.PAYMENT_REFERENCE_PH' | translate"
+                    />
+                  </div>
+                }
               </div>
               <div class="modal-actions">
                 <button class="btn btn-secondary" (click)="closePaymentModal()">{{ 'ORDERS.CANCEL' | translate }}</button>
@@ -2606,7 +2614,11 @@ ModuleRegistry.registerModules([
       background: var(--color-surface);
       border: 1px solid var(--color-border);
       border-radius: var(--radius-lg);
-      overflow: hidden;
+      /* overflow-x: auto (not "hidden") — widened columns must stay reachable via horizontal
+         scroll instead of being clipped off with no way to see them. overflow-y stays hidden
+         so the container keeps its rounded corners. */
+      overflow-x: auto;
+      overflow-y: hidden;
     }
     .grid-container .btn-factura-row,
     .grid-container .btn-edit-order-row {
@@ -2797,6 +2809,25 @@ ModuleRegistry.registerModules([
 
     .modal-order-edit { max-width: 520px; }
     .modal-order-edit .modal-body { max-height: 70dvh; overflow-y: auto; scroll-padding-bottom: var(--space-4); }
+
+    .modal-view-order { max-width: 560px; }
+    .modal-view-order .modal-body { max-height: 75dvh; overflow-y: auto; scroll-padding-bottom: var(--space-4); }
+    .view-order-meta {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: var(--space-3); margin-bottom: var(--space-4); font-size: 0.875rem;
+    }
+    .view-order-meta > div { display: flex; flex-direction: column; gap: 2px; }
+    .view-order-meta-label { font-size: 0.75rem; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.02em; }
+    .view-order-items { width: 100%; border-collapse: collapse; font-size: 0.875rem; margin-bottom: var(--space-4); }
+    .view-order-items th { text-align: left; padding: var(--space-2); border-bottom: 2px solid var(--color-border); font-size: 0.75rem; color: var(--color-text-muted); }
+    .view-order-items td { padding: var(--space-2); border-bottom: 1px solid var(--color-border); vertical-align: top; }
+    .view-order-items .num { text-align: right; white-space: nowrap; }
+    .view-order-item-notes { font-size: 0.75rem; color: var(--color-text-muted); margin-top: 2px; }
+    .view-order-totals { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-4); }
+    .view-order-totals > div { display: flex; justify-content: space-between; font-size: 0.875rem; }
+    .view-order-total-final { font-weight: 700; font-size: 1.0625rem !important; padding-top: var(--space-2); border-top: 1px solid var(--color-border); }
+    .view-order-sri { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: 0.875rem; }
+    .view-order-sri-auth { font-size: 0.75rem; color: var(--color-text-muted); font-family: monospace; }
 
     /* Create Satisfecho Delivery Order — two-column layout: info left, growing items table right */
     .modal-delivery-create { max-width: 860px; }
@@ -3311,6 +3342,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   /** When true, payment modal confirms finish (deliver all + pay) instead of pay-only. */
   paymentModalFinishMode = signal(false);
   paymentMethod = 'cash';
+  paymentReference = '';
   /** Selected POS tip preset percent; 0 = no tip */
   paymentTipPercent = 0;
   /** Collapsed by default in the payment modal — opened on demand so they don't crowd the checkout flow. */
@@ -3332,6 +3364,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   statusDropdownOpen = signal<number | null>(null); // Order ID for which dropdown is open
   itemStatusDropdownOpen = signal<string | null>(null); // "orderId-itemId" for which dropdown is open
   facturaOrder = signal<Order | null>(null);
+  viewOrder = signal<Order | null>(null);
   facturaCustomers = signal<BillingCustomer[]>([]);
   facturaCustomerId: number | null = null;
   /** When true, modal is in "Edit order" mode (Save primary); when false, "Print Factura" mode (Print primary). */
@@ -3506,7 +3539,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     const rows = this.historyDisplayOrders();
     const header = [
       'ID', 'Fecha', 'Hora', 'Canal', 'Mesa/Cliente', 'Items',
-      'Subtotal', 'Impuestos', 'Total', 'Estado', 'Metodo de pago', 'Facturado SRI', 'No. autorizacion',
+      'Subtotal', 'Impuestos', 'Total', 'Estado', 'Metodo de pago', 'No. comprobante', 'Facturado SRI', 'No. autorizacion',
     ];
     const escapeCsv = (value: string) => `"${(value ?? '').replace(/"/g, '""')}"`;
     const centsToPlainAmount = (cents: number | null | undefined) => ((cents ?? 0) / 100).toFixed(2);
@@ -3531,6 +3564,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
         centsToPlainAmount(o.total_cents),
         o.status,
         o.payment_method || '',
+        o.payment_reference || '',
         sri?.estado || '',
         sri?.numero_autorizacion || '',
       ].map(escapeCsv).join(','));
@@ -3639,6 +3673,12 @@ export class OrdersComponent implements OnInit, OnDestroy {
         },
       },
       {
+        field: 'payment_reference',
+        headerName: this.translate.instant('ORDERS.PAYMENT_REFERENCE'),
+        width: 150,
+        valueFormatter: (params) => params.value || '',
+      },
+      {
         field: 'status',
         headerName: this.translate.instant('ORDERS.GRID.STATUS'),
         width: 120,
@@ -3716,6 +3756,20 @@ export class OrdersComponent implements OnInit, OnDestroy {
             timeZone: timeZone,
             hour12: false
           });
+        },
+      },
+      {
+        headerName: '',
+        width: 56,
+        sortable: false,
+        filter: false,
+        cellRenderer: (params: ICellRendererParams) => {
+          const id = params.data?.id;
+          if (id == null) return '';
+          const title = this.translate.instant('ORDERS.VIEW_ORDER');
+          const safeTitle = (title || 'View').replace(/"/g, '&quot;');
+          const icon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+          return `<button type="button" class="btn-view-order-row" data-order-id="${id}" title="${safeTitle}" style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;padding:0;cursor:pointer;background:#fff;color:#333;border:1px solid #ddd;border-radius:8px;">${icon}</button>`;
         },
       },
       {
@@ -4583,6 +4637,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.paymentModalFinishMode.set(false);
     this.orderToMarkPaid.set(order);
     this.paymentMethod = 'cash';
+    this.paymentReference = '';
     this.paymentTipPercent = 0;
     this.paymentTipSectionExpanded.set(false);
     this.paymentSplitSectionExpanded.set(false);
@@ -4595,6 +4650,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.paymentModalFinishMode.set(true);
     this.orderToMarkPaid.set(order);
     this.paymentMethod = 'cash';
+    this.paymentReference = '';
     this.paymentTipPercent = 0;
     this.paymentTipSectionExpanded.set(false);
     this.paymentSplitSectionExpanded.set(false);
@@ -4933,6 +4989,36 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.openOrderEdit(order);
   }
 
+  openViewOrderModal(order: Order) {
+    this.viewOrder.set(order);
+  }
+
+  closeViewOrderModal() {
+    this.viewOrder.set(null);
+  }
+
+  viewOrderSubtotalCents(order: Order): number {
+    return order.subtotal_cents ?? order.items.reduce((sum, it) => sum + it.price_cents * it.quantity, 0);
+  }
+
+  downloadSriRide(order: Order): void {
+    window.open(this.api.sriInvoiceRideUrl(order.id), '_blank');
+  }
+
+  formatOrderDateTime(isoString: string): string {
+    // Backend sends ISO without timezone; treat as UTC (same normalization as formatTime()).
+    const dateStr = isoString.endsWith('Z') || isoString.includes('+') || isoString.includes('-', 10)
+      ? isoString
+      : isoString + 'Z';
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return '';
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return date.toLocaleString(undefined, {
+      month: 'numeric', day: 'numeric', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', timeZone, hour12: false,
+    });
+  }
+
   closeFacturaModal() {
     this.facturaOrder.set(null);
     this.facturaCustomers.set([]);
@@ -4941,10 +5027,17 @@ export class OrdersComponent implements OnInit, OnDestroy {
 
   onGridClick(event: Event) {
     const target = event.target as HTMLElement;
+    const viewBtn = target.closest('.btn-view-order-row');
     const facturaBtn = target.closest('.btn-factura-row');
     const editBtn = target.closest('.btn-edit-order-row');
     const deleteBtn = target.closest('.btn-delete-order-row');
     const rideBtn = target.closest('.btn-ride-download-row');
+    if (viewBtn) {
+      const id = +(viewBtn.getAttribute('data-order-id') || 0);
+      const order = this.orders().find(o => o.id === id);
+      if (order) this.openViewOrderModal(order);
+      return;
+    }
     if (rideBtn) {
       const id = +(rideBtn.getAttribute('data-order-id') || 0);
       window.open(this.api.sriInvoiceRideUrl(id), '_blank');
@@ -5068,6 +5161,9 @@ export class OrdersComponent implements OnInit, OnDestroy {
         this.orders.update(list => list.map(o => o.id === order.id ? { ...o, sri_comprobante: comp } : o));
         if (this.editOrder()?.id === order.id) {
           this.editOrder.set({ ...order, sri_comprobante: comp });
+        }
+        if (this.viewOrder()?.id === order.id) {
+          this.viewOrder.set({ ...order, sri_comprobante: comp });
         }
       },
       error: (err: { error?: { detail?: unknown } }) => {
@@ -5818,6 +5914,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.paymentModalFinishMode.set(false);
     this.orderToMarkPaid.set(order);
     this.paymentMethod = 'cash'; // Reset to default
+    this.paymentReference = '';
     this.paymentTipPercent = 0;
     this.paymentTipSectionExpanded.set(false);
     this.paymentSplitSectionExpanded.set(false);
@@ -5833,6 +5930,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.paymentModalFinishMode.set(true);
     this.orderToMarkPaid.set(order);
     this.paymentMethod = 'cash';
+    this.paymentReference = '';
     this.paymentTipPercent = 0;
     this.paymentTipSectionExpanded.set(false);
     this.paymentSplitSectionExpanded.set(false);
@@ -6151,6 +6249,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
         tipEntryMode: 'overpayment' as const,
         tipAmountCents: tip,
         amountPaidCents: paid > 0 ? paid : undefined,
+        paymentReference: this.paymentMethod === 'transfer' ? this.paymentReference.trim() : undefined,
       };
       const req = this.paymentModalFinishMode()
         ? this.api.finishOrder(order.id, this.paymentMethod, opts)
@@ -6179,7 +6278,11 @@ export class OrdersComponent implements OnInit, OnDestroy {
       this.paymentTipPercent > 0 && this.tipPresetsForPayment().includes(this.paymentTipPercent)
         ? this.paymentTipPercent
         : null;
-    const presetOpts = { tipEntryMode: 'preset' as const, tipPercent: tip };
+    const presetOpts = {
+      tipEntryMode: 'preset' as const,
+      tipPercent: tip,
+      paymentReference: this.paymentMethod === 'transfer' ? this.paymentReference.trim() : undefined,
+    };
     const req = this.paymentModalFinishMode()
       ? this.api.finishOrder(order.id, this.paymentMethod, presetOpts)
       : this.api.markOrderPaid(order.id, this.paymentMethod, presetOpts);

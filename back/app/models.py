@@ -1233,7 +1233,9 @@ class Order(TenantMixin, table=True):
     # Payment tracking
     paid_at: datetime | None = None
     paid_by_user_id: int | None = None  # Who marked it as paid (staff)
-    payment_method: str | None = None  # 'stripe', 'cash', 'terminal', 'revolut', etc.
+    payment_method: str | None = None  # 'stripe', 'cash', 'terminal', 'revolut', 'transfer', etc.
+    # Bank transfer confirmation/receipt number — only meaningful when payment_method == "transfer".
+    payment_reference: str | None = Field(default=None, max_length=100)
     revolut_order_id: str | None = None  # Revolut Merchant order id when paying via Revolut
     tip_percent_applied: int | None = None  # Preset % charged as tip when staff marked paid (null = no tip)
     tip_amount_cents: int | None = None  # Tip amount in cents (gross; VAT split uses tenant tip_tax_rate_percent)
@@ -1809,7 +1811,9 @@ class OrderItemCancel(SQLModel):
 
 
 class OrderMarkPaid(SQLModel):
-    payment_method: str = "cash"  # 'cash', 'terminal', 'stripe', etc.
+    payment_method: str = "cash"  # 'cash', 'terminal', 'stripe', 'transfer', etc.
+    # Bank transfer confirmation/receipt number — only meaningful when payment_method == "transfer".
+    payment_reference: str | None = None
     tip_percent: int | None = None  # 0 or omitted = no tip; otherwise must be in tenant tip_preset_percents
     # When tenant tip_entry_mode is "overpayment": required explicit tip in cents (0 = no tip)
     tip_amount_cents: int | None = None

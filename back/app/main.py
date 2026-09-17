@@ -14261,6 +14261,7 @@ def list_orders(
             "created_at": order.created_at.isoformat(),
             "paid_at": order.paid_at.isoformat() if order.paid_at else None,
             "payment_method": order.payment_method,
+            "payment_reference": getattr(order, "payment_reference", None),
             "staff_urgent": bool(getattr(order, "staff_urgent", False)),
             "order_channel": channel,
             "delivery_address": getattr(order, "delivery_address", None),
@@ -14424,6 +14425,9 @@ def mark_order_paid(
     already = order_pay_svc.amount_paid_cents(session, order.id)
     remaining = max(0, due - already)
     method = (payment_data.payment_method or "cash").strip() or "cash"
+    if method == "transfer" and payment_data.payment_reference:
+        order.payment_reference = payment_data.payment_reference.strip()[:100] or None
+        session.add(order)
 
     if remaining > 0:
         _payment, recon = order_pay_svc.record_payment(
@@ -14659,6 +14663,9 @@ def finish_order(
     session.flush()
 
     method = (payment_data.payment_method or "cash").strip() or "cash"
+    if method == "transfer" and payment_data.payment_reference:
+        order.payment_reference = payment_data.payment_reference.strip()[:100] or None
+        session.add(order)
     due = order_pay_svc.order_due_cents(session, order, include_tip=True)
     already = order_pay_svc.amount_paid_cents(session, order.id)
     remaining = max(0, due - already)

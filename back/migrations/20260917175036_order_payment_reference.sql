@@ -1,0 +1,1 @@
+ALTER TABLE "order" ADD COLUMN IF NOT EXISTS payment_reference VARCHAR(100);

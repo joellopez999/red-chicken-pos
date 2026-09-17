@@ -1580,6 +1580,8 @@ export interface Order {
   removed_items_count?: number;
   paid_at?: string | null;
   payment_method?: string | null;
+  /** Bank transfer confirmation/receipt number — only meaningful when payment_method === 'transfer' */
+  payment_reference?: string | null;
   /** Split-bill reconciliation (#318) */
   amount_due_cents?: number;
   amount_paid_cents?: number;
@@ -2960,6 +2962,7 @@ export class ApiService {
       tipAmountCents?: number | null;
       amountPaidCents?: number | null;
       tipEntryMode?: 'preset' | 'overpayment';
+      paymentReference?: string | null;
     }
   ): Observable<any> {
     const body: {
@@ -2967,7 +2970,9 @@ export class ApiService {
       tip_percent?: number;
       tip_amount_cents?: number;
       amount_paid_cents?: number;
+      payment_reference?: string;
     } = { payment_method: paymentMethod };
+    if (opts?.paymentReference) body.payment_reference = opts.paymentReference;
     const mode = opts?.tipEntryMode ?? 'preset';
     if (mode === 'overpayment') {
       const t = opts?.tipAmountCents != null ? Math.max(0, Math.floor(opts.tipAmountCents)) : 0;
@@ -3091,6 +3096,7 @@ export class ApiService {
       tipAmountCents?: number | null;
       amountPaidCents?: number | null;
       tipEntryMode?: 'preset' | 'overpayment';
+      paymentReference?: string | null;
     }
   ): Observable<any> {
     const body: {
@@ -3098,7 +3104,9 @@ export class ApiService {
       tip_percent?: number;
       tip_amount_cents?: number;
       amount_paid_cents?: number;
+      payment_reference?: string;
     } = { payment_method: paymentMethod };
+    if (opts?.paymentReference) body.payment_reference = opts.paymentReference;
     const mode = opts?.tipEntryMode ?? 'preset';
     if (mode === 'overpayment') {
       const t = opts?.tipAmountCents != null ? Math.max(0, Math.floor(opts.tipAmountCents)) : 0;
