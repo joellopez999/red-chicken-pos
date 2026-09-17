@@ -281,6 +281,10 @@ class Tenant(SQLModel, table=True):
     # WhatsApp number (any format the tenant wants to type) the customer is told to send the
     # transfer receipt to; used to build a wa.me link with a pre-filled message.
     transfer_whatsapp_phone: str | None = Field(default=None, max_length=20)
+    # Extra confirmation code required to delete an order from Historial (soft-delete,
+    # DELETE /orders/{id}). Not a security boundary (staff already has delete permission) —
+    # just friction against accidental clicks. Unset = no PIN required (current behavior).
+    history_delete_pin: str | None = Field(default=None, max_length=20)
 
     # Platform SaaS subscription (Satisfecho paywall — not restaurant guest payments)
     # none | trialing | active | canceled | past_due | grandfathered
@@ -2018,6 +2022,7 @@ class TenantUpdate(SQLModel):
     resend_api_key: str | None = None
     pickup_transfer_instructions: str | None = None
     transfer_whatsapp_phone: str | None = None
+    history_delete_pin: str | None = None
 
 
 class TenantProductCreate(SQLModel):

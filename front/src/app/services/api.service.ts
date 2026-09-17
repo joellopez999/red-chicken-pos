@@ -1807,6 +1807,10 @@ export interface TenantSettings {
   delivery_postal_codes?: string | null;
   /** Shown to customers on the take-away/pickup ordering page when paying by bank transfer */
   pickup_transfer_instructions?: string | null;
+  /** WhatsApp number customers are told to send the transfer receipt to */
+  transfer_whatsapp_phone?: string | null;
+  /** Extra confirmation code required to delete an order (Historial); empty = no PIN required */
+  history_delete_pin?: string | null;
   // Per-tenant SMTP / email (optional; fallback to global config)
   smtp_host?: string | null;
   smtp_port?: number | null;
@@ -2850,9 +2854,12 @@ export class ApiService {
   }
 
   // Orders
-  getOrders(includeRemoved: boolean = false): Observable<Order[]> {
-    const params = includeRemoved ? { params: { include_removed: 'true' } } : {};
-    return this.http.get<Order[]>(`${this.apiUrl}/orders`, params);
+  getOrders(includeRemoved: boolean = false, dateFrom?: string | null, dateTo?: string | null): Observable<Order[]> {
+    const params: Record<string, string> = {};
+    if (includeRemoved) params['include_removed'] = 'true';
+    if (dateFrom) params['date_from'] = dateFrom;
+    if (dateTo) params['date_to'] = dateTo;
+    return this.http.get<Order[]>(`${this.apiUrl}/orders`, { params });
   }
 
   createSatisfechoDeliveryOrder(body: SatisfechoDeliveryOrderCreate): Observable<SatisfechoDeliveryOrderResponse> {
@@ -3112,8 +3119,9 @@ export class ApiService {
     );
   }
 
-  deleteOrder(orderId: number): Observable<{ status: string; order_id: number }> {
-    return this.http.delete<{ status: string; order_id: number }>(`${this.apiUrl}/orders/${orderId}`);
+  deleteOrder(orderId: number, pin?: string | null): Observable<{ status: string; order_id: number }> {
+    const params = pin ? { params: { pin } } : {};
+    return this.http.delete<{ status: string; order_id: number }>(`${this.apiUrl}/orders/${orderId}`, params);
   }
 
   setOrderBillingCustomer(orderId: number, billingCustomerId: number | null): Observable<{ order_id: number; billing_customer_id: number | null }> {

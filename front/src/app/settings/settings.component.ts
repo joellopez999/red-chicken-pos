@@ -1671,6 +1671,34 @@ import { MAX_IMAGE_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_MB } from '../shared/image-upl
                     ></textarea>
                     <p class="hint">{{ 'SETTINGS.PICKUP_TRANSFER_INSTRUCTIONS_HINT' | translate }}</p>
                   </div>
+                  <div class="form-group">
+                    <label for="transfer_whatsapp_phone">{{ 'SETTINGS.TRANSFER_WHATSAPP_PHONE' | translate }}</label>
+                    <input
+                      type="text"
+                      id="transfer_whatsapp_phone"
+                      maxlength="20"
+                      [(ngModel)]="formData.transfer_whatsapp_phone"
+                      name="transfer_whatsapp_phone"
+                      [placeholder]="'SETTINGS.TRANSFER_WHATSAPP_PHONE_PH' | translate"
+                    />
+                    <p class="hint">{{ 'SETTINGS.TRANSFER_WHATSAPP_PHONE_HINT' | translate }}</p>
+                  </div>
+
+                  <div class="divider"></div>
+                  <h3>{{ 'SETTINGS.HISTORY_DELETE_PIN_TITLE' | translate }}</h3>
+                  <p class="section-desc">{{ 'SETTINGS.HISTORY_DELETE_PIN_DESC' | translate }}</p>
+                  <div class="form-group">
+                    <label for="history_delete_pin">{{ 'SETTINGS.HISTORY_DELETE_PIN' | translate }}</label>
+                    <input
+                      type="text"
+                      id="history_delete_pin"
+                      maxlength="20"
+                      [(ngModel)]="formData.history_delete_pin"
+                      name="history_delete_pin"
+                      [placeholder]="'SETTINGS.HISTORY_DELETE_PIN_PH' | translate"
+                    />
+                    <p class="hint">{{ 'SETTINGS.HISTORY_DELETE_PIN_HINT' | translate }}</p>
+                  </div>
                 </div>
               }
 
@@ -3387,6 +3415,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
     delivery_radius_meters: null,
     delivery_postal_codes: null,
     pickup_transfer_instructions: null as string | null,
+    transfer_whatsapp_phone: null as string | null,
+    history_delete_pin: null as string | null,
     public_google_review_url: null,
     public_google_maps_url: null,
     public_openstreetmap_url: null,
@@ -3523,6 +3553,8 @@ export class SettingsComponent implements OnInit, OnDestroy {
           delivery_radius_meters: settings.delivery_radius_meters ?? null,
           delivery_postal_codes: this.formatDeliveryPostalCodesForForm(settings.delivery_postal_codes),
           pickup_transfer_instructions: settings.pickup_transfer_instructions ?? null,
+          transfer_whatsapp_phone: settings.transfer_whatsapp_phone ?? null,
+          history_delete_pin: settings.history_delete_pin ?? null,
           public_google_review_url: settings.public_google_review_url ?? null,
           public_google_maps_url: settings.public_google_maps_url ?? null,
           public_openstreetmap_url: settings.public_openstreetmap_url ?? null,

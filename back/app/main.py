@@ -3121,6 +3121,7 @@ async def password_reset_request(
 @limiter.limit(f"{getattr(settings, 'rate_limit_password_reset_per_hour', 5)}/hour")
 def password_reset_confirm(
     request: Request,
+    response: Response,
     body: PasswordResetConfirmBody,
     lang: str = Depends(_get_requested_language),
     session: Session = Depends(get_session),
@@ -4337,6 +4338,8 @@ def update_tenant_settings(
         tenant.pickup_transfer_instructions = tenant_update.pickup_transfer_instructions.strip()[:1000] or None
     if tenant_update.transfer_whatsapp_phone is not None:
         tenant.transfer_whatsapp_phone = tenant_update.transfer_whatsapp_phone.strip()[:20] or None
+    if tenant_update.history_delete_pin is not None:
+        tenant.history_delete_pin = tenant_update.history_delete_pin.strip()[:20] or None
 
     # Per-tenant SMTP / email (optional; fallback to global config)
     if tenant_update.smtp_host is not None:
@@ -6879,6 +6882,7 @@ def list_provider_products(
 )
 def create_provider_product_for_tenant(
     request: Request,
+    response: Response,
     provider_id: int,
     body: models.ProviderProductCreate,
     current_user: Annotated[models.User, Depends(require_permission(Permission.CATALOG_WRITE))],
@@ -14074,14 +14078,37 @@ def update_order_delivery(
 def list_orders(
     current_user: Annotated[models.User, Depends(require_permission(Permission.ORDER_READ))],
     include_removed: bool = Query(False, description="Include removed items in response"),
+    date_from: str | None = Query(None, description="Inclusive lower bound, YYYY-MM-DD (local calendar date)"),
+    date_to: str | None = Query(None, description="Inclusive upper bound, YYYY-MM-DD (local calendar date)"),
     session: Session = Depends(get_session)
 ) -> list[dict]:
-    orders = session.exec(
+    query = (
         select(models.Order)
         .where(models.Order.tenant_id == current_user.tenant_id)
         .where(models.Order.deleted_at.is_(None))
-        .order_by(models.Order.created_at.desc())
-    ).all()
+    )
+    # Dates are the tenant's local (Ecuador, UTC-5) calendar day; created_at is stored as
+    # naive UTC, so the day boundary must be converted or a late-evening local order lands
+    # in the next UTC day and bleeds into (or out of) the wrong side of the filter.
+    if date_from:
+        try:
+            d = date.fromisoformat(date_from)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date_from (expected YYYY-MM-DD)")
+        lower_utc = datetime.combine(d, time.min, tzinfo=EC_TZ).astimezone(timezone.utc).replace(tzinfo=None)
+        query = query.where(models.Order.created_at >= lower_utc)
+    if date_to:
+        try:
+            d = date.fromisoformat(date_to)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date_to (expected YYYY-MM-DD)")
+        upper_utc = (
+            datetime.combine(d + timedelta(days=1), time.min, tzinfo=EC_TZ)
+            .astimezone(timezone.utc)
+            .replace(tzinfo=None)
+        )
+        query = query.where(models.Order.created_at < upper_utc)
+    orders = session.exec(query.order_by(models.Order.created_at.desc())).all()
 
     tenant_row = session.get(models.Tenant, current_user.tenant_id)
     station_rows = session.exec(
@@ -14752,6 +14779,7 @@ def unmark_order_paid(
 def delete_order(
     order_id: int,
     current_user: Annotated[models.User, Depends(require_permission(Permission.ORDER_DELETE))],
+    pin: str | None = Query(None, description="Required when tenant.history_delete_pin is set"),
     session: Session = Depends(get_session)
 ) -> dict:
     """Soft-delete an order: remove from orders list and from book-keeping (reports). For test/cleanup."""
@@ -14765,6 +14793,10 @@ def delete_order(
         raise HTTPException(status_code=404, detail="Order not found")
     if order.deleted_at is not None:
         raise HTTPException(status_code=400, detail="Order is already deleted")
+    tenant = session.get(models.Tenant, current_user.tenant_id)
+    if tenant and tenant.history_delete_pin:
+        if not pin or pin.strip() != tenant.history_delete_pin:
+            raise HTTPException(status_code=403, detail="incorrect_pin")
     assert_order_fiscally_mutable(session, current_user.tenant_id, order.id)
     assert_order_sri_invoice_mutable(session, current_user.tenant_id, order.id)
 

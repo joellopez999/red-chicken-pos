@@ -970,16 +970,59 @@ ModuleRegistry.registerModules([
 
             <!-- Order History Section (AG Grid) - only when History tab is selected -->
             @if (viewMode() === 'history') {
-              @if (completedOrders().length > 0) {
-                <div class="section-header history-header">
-                  <h2>{{ 'ORDERS.ORDER_HISTORY' | translate }}</h2>
-                  <span class="badge secondary">{{ completedOrders().length }}</span>
+              <div class="section-header history-header">
+                <h2>{{ 'ORDERS.ORDER_HISTORY' | translate }}</h2>
+                <span class="badge secondary">{{ historyDisplayOrders().length }}</span>
+              </div>
+              <div class="history-filters">
+                <label class="history-filter-label">
+                  {{ 'ORDERS.HISTORY_DATE_FROM' | translate }}
+                  <input type="date" class="form-input" [ngModel]="historyDateFrom()" (ngModelChange)="historyDateFrom.set($event)" name="historyDateFrom" />
+                </label>
+                <label class="history-filter-label">
+                  {{ 'ORDERS.HISTORY_DATE_TO' | translate }}
+                  <input type="date" class="form-input" [ngModel]="historyDateTo()" (ngModelChange)="historyDateTo.set($event)" name="historyDateTo" />
+                </label>
+                <label class="history-filter-label">
+                  {{ 'ORDERS.HISTORY_STATUS' | translate }}
+                  <select class="form-select" [ngModel]="historyStatusFilter()" (ngModelChange)="historyStatusFilter.set($event)" name="historyStatusFilter">
+                    <option value="all">{{ 'ORDERS.HISTORY_STATUS_ALL' | translate }}</option>
+                    <option value="completed">{{ 'ORDER_STATUS.completed' | translate }}</option>
+                    <option value="paid">{{ 'ORDER_STATUS.paid' | translate }}</option>
+                    <option value="cancelled">{{ 'ORDER_STATUS.cancelled' | translate }}</option>
+                  </select>
+                </label>
+                <label class="history-filter-label">
+                  {{ 'ORDERS.GRID.PAYMENT_METHOD' | translate }}
+                  <select class="form-select" [ngModel]="historyPaymentMethodFilter()" (ngModelChange)="historyPaymentMethodFilter.set($event)" name="historyPaymentMethodFilter">
+                    <option value="all">{{ 'ORDERS.HISTORY_STATUS_ALL' | translate }}</option>
+                    @for (pm of historyPaymentMethods(); track pm) {
+                      <option [value]="pm">{{ ('PAYMENT_METHOD.' + pm) | translate }}</option>
+                    }
+                  </select>
+                </label>
+                <button type="button" class="btn btn-primary btn-sm" (click)="applyHistoryDateFilter()" [disabled]="historyFilterLoading() || (!historyDateFrom() && !historyDateTo())">
+                  {{ historyFilterLoading() ? ('COMMON.LOADING' | translate) : ('ORDERS.HISTORY_FILTER_APPLY' | translate) }}
+                </button>
+                @if (historyFilterActive()) {
+                  <button type="button" class="btn btn-secondary btn-sm" (click)="clearHistoryDateFilter()">{{ 'ORDERS.HISTORY_FILTER_CLEAR' | translate }}</button>
+                }
+                <button type="button" class="btn btn-secondary btn-sm" (click)="exportHistoryCsv()" [disabled]="historyDisplayOrders().length === 0">
+                  {{ 'ORDERS.HISTORY_EXPORT_CSV' | translate }}
+                </button>
+              </div>
+              @if (historyFilterActive()) {
+                <div class="history-filter-summary">
+                  <span class="history-filter-summary-label">{{ 'ORDERS.HISTORY_FILTERED_TOTAL' | translate: { count: historyDisplayOrders().length } }}</span>
+                  <span class="history-filter-summary-value">{{ formatPrice(historyTotalCents()) }}</span>
                 </div>
+              }
+              @if (historyDisplayOrders().length > 0) {
                 <div class="grid-container" (click)="onGridClick($event)">
                   <ag-grid-angular
                     style="width: 100%; height: 400px;"
                     [theme]="gridTheme"
-                    [rowData]="completedOrders()"
+                    [rowData]="historyDisplayOrders()"
                     [columnDefs]="columnDefs"
                     [defaultColDef]="defaultColDef"
                   />
@@ -1832,12 +1875,28 @@ ModuleRegistry.registerModules([
                 <p>{{ confirmAction()!.message }}</p>
                 @if (confirmAction()!.requireReason) {
                   <div class="form-group">
-                    <textarea 
+                    <textarea
                       class="form-textarea"
                       [(ngModel)]="confirmReason"
                       rows="3"
                       [placeholder]="'COMMON.DESCRIPTION' | translate"
                     ></textarea>
+                  </div>
+                }
+                @if (confirmAction()!.requirePin) {
+                  <div class="form-group">
+                    <label for="confirm-pin">{{ 'ORDERS.ENTER_PIN_TO_CONFIRM' | translate }}</label>
+                    <input
+                      type="password"
+                      id="confirm-pin"
+                      class="form-input"
+                      [(ngModel)]="confirmPin"
+                      (keyup.enter)="handleConfirm()"
+                      autofocus
+                    />
+                    @if (confirmPinError()) {
+                      <p class="form-error">{{ confirmPinError() }}</p>
+                    }
                   </div>
                 }
               </div>
@@ -1998,6 +2057,23 @@ ModuleRegistry.registerModules([
     .section-header { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
     .section-header h2 { font-size: 1.125rem; font-weight: 600; color: var(--color-text); margin: 0; }
     .history-header { margin-top: var(--space-6); }
+    .history-filters {
+      display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3);
+      margin-bottom: var(--space-4);
+    }
+    .history-filter-label {
+      display: flex; flex-direction: column; gap: var(--space-1);
+      font-size: 0.8125rem; color: var(--color-text-muted); font-weight: 500;
+    }
+    .history-filter-summary {
+      display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+      padding: var(--space-3) var(--space-4); margin-bottom: var(--space-4);
+      background: var(--color-primary-light, var(--color-bg)); border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+    }
+    .history-filter-summary-label { font-size: 0.875rem; color: var(--color-text-muted); }
+    .history-filter-summary-value { font-size: 1.25rem; font-weight: 700; color: var(--color-primary); }
+    .form-error { color: var(--color-danger, #DC2626); font-size: 0.8125rem; margin-top: var(--space-1); }
     .badge {
       padding: var(--space-1) var(--space-3); border-radius: 20px; font-size: 0.75rem; font-weight: 600;
       background: var(--color-primary); color: white;
@@ -3322,8 +3398,11 @@ export class OrdersComponent implements OnInit, OnDestroy {
     onConfirm: () => void;
     confirmText?: string;
     requireReason?: boolean;
+    requirePin?: boolean;
   } | null>(null);
   confirmReason = '';
+  confirmPin = '';
+  confirmPinError = signal('');
 
   // Loading state for async actions
   loadingAction = signal<string | null>(null);
@@ -3357,6 +3436,119 @@ export class OrdersComponent implements OnInit, OnDestroy {
     if (tid != null) list = list.filter(o => o.table_id === tid);
     return list;
   });
+  // Historial: optional date-range filter. null = no filter applied (falls back to
+  // completedOrders(), the existing "everything ever loaded" behavior) — set once staff
+  // picks a range and clicks "Filtrar", via a dedicated GET /orders?date_from&date_to call
+  // rather than re-purposing loadOrders() (which many other views/websocket refreshes rely
+  // on returning the unfiltered set).
+  historyDateFrom = signal<string | null>(null);
+  historyDateTo = signal<string | null>(null);
+  historyFilteredOrders = signal<Order[] | null>(null);
+  historyFilterLoading = signal(false);
+  historyStatusFilter = signal<'all' | 'paid' | 'completed' | 'cancelled'>('all');
+  historyPaymentMethodFilter = signal<string>('all');
+  historyPaymentMethods = computed(() => {
+    const set = new Set<string>();
+    for (const o of this.completedOrders()) {
+      if (o.payment_method) set.add(o.payment_method);
+    }
+    return Array.from(set).sort();
+  });
+  historyDisplayOrders = computed(() => {
+    const base = this.historyFilteredOrders() ?? this.completedOrders();
+    const status = this.historyStatusFilter();
+    const paymentMethod = this.historyPaymentMethodFilter();
+    return base.filter(o =>
+      (status === 'all' || o.status === status) &&
+      (paymentMethod === 'all' || o.payment_method === paymentMethod)
+    );
+  });
+  /** True once staff applied a date range, status, or payment method (not "all"). */
+  historyFilterActive = computed(() =>
+    this.historyFilteredOrders() !== null ||
+    this.historyStatusFilter() !== 'all' ||
+    this.historyPaymentMethodFilter() !== 'all'
+  );
+  historyTotalCents = computed(() => this.historyDisplayOrders().reduce((sum, o) => sum + (o.total_cents || 0), 0));
+
+  applyHistoryDateFilter() {
+    const from = this.historyDateFrom();
+    const to = this.historyDateTo();
+    if (!from && !to) {
+      this.historyFilteredOrders.set(null);
+      return;
+    }
+    this.historyFilterLoading.set(true);
+    const tid = this.tableScopeId();
+    this.api.getOrders(this.showRemovedItems, from, to).subscribe({
+      next: orders => {
+        this.historyFilterLoading.set(false);
+        let list = orders.filter(o => ['completed', 'cancelled', 'paid'].includes(o.status));
+        if (tid != null) list = list.filter(o => o.table_id === tid);
+        this.historyFilteredOrders.set(list);
+      },
+      error: () => {
+        this.historyFilterLoading.set(false);
+        this.showToast(this.translate.instant('ORDERS.HISTORY_FILTER_FAILED'), 'error');
+      },
+    });
+  }
+
+  clearHistoryDateFilter() {
+    this.historyDateFrom.set(null);
+    this.historyDateTo.set(null);
+    this.historyFilteredOrders.set(null);
+    this.historyStatusFilter.set('all');
+    this.historyPaymentMethodFilter.set('all');
+  }
+
+  exportHistoryCsv() {
+    const rows = this.historyDisplayOrders();
+    const header = [
+      'ID', 'Fecha', 'Hora', 'Canal', 'Mesa/Cliente', 'Items',
+      'Subtotal', 'Impuestos', 'Total', 'Estado', 'Metodo de pago', 'Facturado SRI', 'No. autorizacion',
+    ];
+    const escapeCsv = (value: string) => `"${(value ?? '').replace(/"/g, '""')}"`;
+    const centsToPlainAmount = (cents: number | null | undefined) => ((cents ?? 0) / 100).toFixed(2);
+    const lines = [header.map(escapeCsv).join(',')];
+    for (const o of rows) {
+      // Backend sends ISO without timezone; treat as UTC (same normalization as formatTime()).
+      const isoDate = o.created_at.endsWith('Z') || o.created_at.includes('+') || o.created_at.includes('-', 10)
+        ? o.created_at
+        : `${o.created_at}Z`;
+      const created = new Date(isoDate);
+      const itemsSummary = (o.items || []).map(it => `${it.quantity}x ${it.product_name || ''}`).join('; ');
+      const sri = o.sri_comprobante;
+      lines.push([
+        String(o.id),
+        created.toLocaleDateString('es-EC'),
+        created.toLocaleTimeString('es-EC'),
+        o.order_channel || 'table',
+        o.customer_name || o.table_name || '',
+        itemsSummary,
+        centsToPlainAmount(o.subtotal_cents ?? o.total_cents),
+        centsToPlainAmount(o.tax_cents),
+        centsToPlainAmount(o.total_cents),
+        o.status,
+        o.payment_method || '',
+        sri?.estado || '',
+        sri?.numero_autorizacion || '',
+      ].map(escapeCsv).join(','));
+    }
+    const csv = '﻿' + lines.join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const from = this.historyDateFrom();
+    const to = this.historyDateTo();
+    const rangeSuffix = from || to ? `_${from || 'inicio'}_a_${to || 'hoy'}` : '';
+    a.href = url;
+    a.download = `historial-pedidos${rangeSuffix}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
   notPaidOrders = computed(() => {
     const tid = this.tableScopeId();
     let list = this.orders().filter(o => o.status === 'completed' && !o.paid_at);
@@ -3435,6 +3627,15 @@ export class OrdersComponent implements OnInit, OnDestroy {
         valueFormatter: (params) => {
           if (params.value == null) return '';
           return formatCurrency(params.value);
+        },
+      },
+      {
+        field: 'payment_method',
+        headerName: this.translate.instant('ORDERS.GRID.PAYMENT_METHOD'),
+        width: 130,
+        valueFormatter: (params) => {
+          if (!params.value) return '-';
+          return this.translate.instant(`PAYMENT_METHOD.${params.value}`) || params.value;
         },
       },
       {
@@ -4592,27 +4793,38 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.toast.set({ message, type });
   }
 
-  openConfirmModal(message: string, onConfirm: () => void, options?: { confirmText?: string; requireReason?: boolean }) {
+  openConfirmModal(message: string, onConfirm: () => void, options?: { confirmText?: string; requireReason?: boolean; requirePin?: boolean }) {
     this.confirmReason = '';
+    this.confirmPin = '';
+    this.confirmPinError.set('');
     this.confirmAction.set({
       message,
       onConfirm,
       confirmText: options?.confirmText,
-      requireReason: options?.requireReason
+      requireReason: options?.requireReason,
+      requirePin: options?.requirePin,
     });
   }
 
   closeConfirmModal() {
     this.confirmAction.set(null);
     this.confirmReason = '';
+    this.confirmPin = '';
+    this.confirmPinError.set('');
   }
 
   handleConfirm() {
     const action = this.confirmAction();
-    if (action) {
-      action.onConfirm();
-      this.closeConfirmModal();
+    if (!action) return;
+    if (action.requirePin) {
+      const expected = this.tenantSettings()?.history_delete_pin;
+      if (expected && this.confirmPin.trim() !== expected) {
+        this.confirmPinError.set(this.translate.instant('ORDERS.INCORRECT_PIN'));
+        return;
+      }
     }
+    action.onConfirm();
+    this.closeConfirmModal();
   }
 
   formatTime(isoString: string): string {
@@ -5481,18 +5693,22 @@ export class OrdersComponent implements OnInit, OnDestroy {
   }
 
   deleteOrder(order: Order) {
+    const pinRequired = !!this.tenantSettings()?.history_delete_pin;
     this.openConfirmModal(
       this.translate.instant('ORDERS.DELETE_ORDER_CONFIRM'),
       () => {
-        this.api.deleteOrder(order.id).subscribe({
+        this.api.deleteOrder(order.id, this.confirmPin.trim() || undefined).subscribe({
           next: () => {
             this.orders.update(list => list.filter(o => o.id !== order.id));
             this.showToast(this.translate.instant('ORDERS.DELETE_ORDER_DONE'), 'success');
           },
-          error: () => this.showToast(this.translate.instant('ORDERS.DELETE_ORDER_FAILED'), 'error')
+          error: (err) => {
+            const detail = typeof err.error?.detail === 'string' ? err.error.detail : '';
+            this.showToast(detail || this.translate.instant('ORDERS.DELETE_ORDER_FAILED'), 'error');
+          }
         });
       },
-      { confirmText: this.translate.instant('ORDERS.DELETE_ORDER') }
+      { confirmText: this.translate.instant('ORDERS.DELETE_ORDER'), requirePin: pinRequired }
     );
   }
 

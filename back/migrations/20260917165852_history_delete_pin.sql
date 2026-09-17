@@ -1,0 +1,1 @@
+ALTER TABLE tenant ADD COLUMN IF NOT EXISTS history_delete_pin VARCHAR(20);
