@@ -1,0 +1,6 @@
+[Unit]
+Description=Respaldo diario de la base de datos de Red Chicken POS a Google Drive
+
+[Service]
+Type=oneshot
+ExecStart=/home/imac/pos-backup/backup.sh
