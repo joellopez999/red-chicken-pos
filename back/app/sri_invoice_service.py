@@ -351,6 +351,24 @@ def assert_order_sri_invoice_mutable(session: Session, tenant_id: int, order_id:
         )
 
 
+def sri_comprobante_public_dict(row: models.SriComprobante) -> dict:
+    return {
+        "id": row.id,
+        "order_id": row.order_id,
+        "tipo_comprobante": row.tipo_comprobante,
+        "ambiente": row.ambiente,
+        "clave_acceso": row.clave_acceso,
+        "secuencial": row.secuencial,
+        "estado": row.estado,
+        "numero_autorizacion": row.numero_autorizacion,
+        "fecha_autorizacion": row.fecha_autorizacion.isoformat() if row.fecha_autorizacion else None,
+        "mensajes_error": row.mensajes_error,
+        "amount_cents": row.amount_cents,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "email_sent_at": row.email_sent_at.isoformat() if row.email_sent_at else None,
+    }
+
+
 def sri_comprobante_by_order_ids(session: Session, order_ids: list[int]) -> dict[int, models.SriComprobante]:
     """Bulk lookup for embedding SRI invoice status in an order list — avoids N+1 per-row
     fetches (same pattern as branch_fulfillment.fulfillments_by_order_ids)."""
