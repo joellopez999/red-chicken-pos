@@ -1,4 +1,27 @@
 <app-sidebar>
+  @if (reportsPinRequired() && !reportsUnlocked()) {
+    <div class="reports-pin-gate" data-testid="reports-pin-gate">
+      <div class="reports-pin-card">
+        <h2>{{ 'REPORTS.PIN_GATE_TITLE' | translate }}</h2>
+        <p class="muted">{{ 'REPORTS.PIN_GATE_SUBTITLE' | translate }}</p>
+        <input
+          type="password"
+          inputmode="numeric"
+          [ngModel]="reportsPinInput()"
+          (ngModelChange)="reportsPinInput.set($event)"
+          (keyup.enter)="submitReportsPin()"
+          [placeholder]="'REPORTS.PIN_PLACEHOLDER' | translate"
+          autofocus
+        />
+        @if (reportsPinError()) {
+          <div class="error-banner">{{ reportsPinError() }}</div>
+        }
+        <button type="button" class="btn btn-primary" (click)="submitReportsPin()">
+          {{ 'REPORTS.PIN_SUBMIT' | translate }}
+        </button>
+      </div>
+    </div>
+  } @else {
   <div class="reports-page" data-testid="reports-page">
   <div class="page-header">
     <div class="header-text">
@@ -407,6 +430,43 @@
           </table>
         </div>
       </section>
+
+      <!-- By customer (best customers) -->
+      @if (r.by_customer && r.by_customer.length > 0) {
+        <section class="report-section">
+          <h2>{{ 'REPORTS.BY_CUSTOMER' | translate }}</h2>
+          <p class="subtitle">{{ 'REPORTS.BY_CUSTOMER_DESC' | translate }}</p>
+          <div class="data-table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>{{ 'REPORTS.CUSTOMER' | translate }}</th>
+                  <th>{{ 'REPORTS.ORDERS_COUNT' | translate }}</th>
+                  <th class="num">{{ 'REPORTS.AVG_TICKET' | translate }}</th>
+                  <th class="num">{{ 'REPORTS.REVENUE' | translate }}</th>
+                  <th class="num">{{ 'REPORTS.SHARE' | translate }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (c of r.by_customer; track c.customer_name) {
+                  <tr>
+                    <td>{{ c.customer_name }}</td>
+                    <td>{{ c.order_count }}</td>
+                    <td class="num">{{ formatCurrency(c.average_order_cents) }}</td>
+                    <td class="num">{{ formatCurrency(c.revenue_cents) }}</td>
+                    <td class="num share-with-bar">
+                      <div class="bar-track inline">
+                        <div class="bar-fill waiter" [style.width.%]="(c.revenue_cents / r.summary.total_revenue_cents) * 100"></div>
+                      </div>
+                      <span class="share-value">{{ formatPct(c.revenue_cents, r.summary.total_revenue_cents) }}</span>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </section>
+      }
     }
 
     @if (canViewAttendance()) {
@@ -702,6 +762,7 @@
     </section>
   }
   </div>
+  }
 
   @if (workSessionAdjustOpen()) {
     <div class="reports-modal-overlay" role="presentation">

@@ -85,6 +85,28 @@ def _waiter_name_for_order_tips(session: Session, order: models.Order) -> str:
     return "Unassigned"
 
 
+def _customer_identity(session: Session, order: "models.Order") -> tuple[str, str] | None:
+    """Resolve a stable (key, display name) for the guest who placed the order, preferring
+    the most reliable identifier available. Returns None for orders with nothing to identify
+    the customer by (e.g. an anonymous dine-in table order) — those are excluded from the
+    "top customers" report rather than lumped into one misleading "no name" bucket."""
+    if order.billing_customer_id:
+        bc = session.get(models.BillingCustomer, order.billing_customer_id)
+        if bc:
+            return f"bc:{bc.id}", (bc.company_name or bc.name)
+    if order.customer_id:
+        cu = session.get(models.Customer, order.customer_id)
+        if cu:
+            return f"cu:{cu.id}", (cu.full_name or cu.phone or cu.email)
+    phone = (order.customer_phone or "").strip()
+    name = (order.customer_name or "").strip()
+    if phone:
+        return f"phone:{phone}", name or phone
+    if name:
+        return f"name:{name.lower()}", name
+    return None
+
+
 def _get_revenue_items(
     session: Session,
     tenant_id: int,
@@ -113,6 +135,7 @@ def _get_revenue_items(
             .where(models.OrderItem.status != models.OrderItemStatus.cancelled)
         ).all()
         table = session.get(models.Table, order.table_id) if order.table_id is not None else None
+        customer_identity = _customer_identity(session, order)
         waiter_id = None
         waiter_name = None
         if table:
@@ -149,6 +172,8 @@ def _get_revenue_items(
                 "revenue_cents": revenue_cents,
                 "profit_cents": revenue_cents - cost_cents,
                 "payment_method": order.payment_method or "unknown",
+                "customer_key": customer_identity[0] if customer_identity else None,
+                "customer_name": customer_identity[1] if customer_identity else None,
             })
     return result
 
@@ -339,6 +364,34 @@ def _build_report_payload(tenant_id: int, session: Session, from_date: date, to_
         for k, v in sorted(by_waiter.items(), key=lambda x: -x[1]["revenue_cents"])
     ]
 
+    # By customer ("who are our best customers") — only rows we could actually identify
+    # (registered account, billing/Factura customer, or a name/phone given at checkout);
+    # anonymous dine-in orders have nothing to group by and are left out on purpose.
+    by_customer: dict[str, dict] = defaultdict(
+        lambda: {"name": "", "revenue_cents": 0, "cost_cents": 0, "profit_cents": 0, "order_count": set()}
+    )
+    for r in rows:
+        key = r.get("customer_key")
+        if not key:
+            continue
+        entry = by_customer[key]
+        entry["name"] = r["customer_name"]
+        entry["revenue_cents"] += r["revenue_cents"]
+        entry["cost_cents"] += r["cost_cents"]
+        entry["profit_cents"] += r["profit_cents"]
+        entry["order_count"].add(r["order_id"])
+    by_customer_list = [
+        {
+            "customer_name": v["name"],
+            "revenue_cents": v["revenue_cents"],
+            "cost_cents": v["cost_cents"],
+            "profit_cents": v["profit_cents"],
+            "order_count": len(v["order_count"]),
+            "average_order_cents": v["revenue_cents"] // len(v["order_count"]) if v["order_count"] else 0,
+        }
+        for v in sorted(by_customer.values(), key=lambda x: -x["revenue_cents"])
+    ]
+
     # Reservations in date range (by reservation_date); source = public (token set) vs staff (no token); by status
     reservations = session.exec(
         select(models.Reservation)
@@ -401,6 +454,7 @@ def _build_report_payload(tenant_id: int, session: Session, from_date: date, to_
         "by_category": by_category_list,
         "by_table": by_table_list,
         "by_waiter": by_waiter_list,
+        "by_customer": by_customer_list,
     }
 
 

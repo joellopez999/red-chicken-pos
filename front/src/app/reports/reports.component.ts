@@ -129,7 +129,7 @@ export class ReportsComponent implements OnInit {
   paymentMethodColumns = computed(() => {
     const r = this.report();
     const methods = new Set((r?.payment_methods_daily ?? []).map((m) => m.payment_method));
-    const priority = ['cash', 'transfer'];
+    const priority = ['cash', 'transfer', 'pedidosya'];
     return Array.from(methods).sort((a, b) => {
       const pa = priority.indexOf(a);
       const pb = priority.indexOf(b);
@@ -209,18 +209,68 @@ export class ReportsComponent implements OnInit {
   /** Bumps when UI language changes so currency/date formatting refreshes. */
   private reportIntlRevision = signal(0);
 
+  // ---- PIN gate: same PIN as the Historial delete confirmation (tenant.history_delete_pin).
+  // Owners sometimes give staff an "admin" account for day-to-day POS work but don't want
+  // them casually opening financial reports, so this re-locks the whole page behind that PIN.
+  // Deliberately NOT persisted (no sessionStorage) — re-prompts every time this page is
+  // opened, including navigating away to another module and back.
+  reportsPinRequired = signal(false);
+  reportsUnlocked = signal(false);
+  reportsPinInput = signal('');
+  reportsPinError = signal('');
+  private expectedReportsPin: string | null = null;
+
   ngOnInit() {
     const today = this.startOfLocalDay(new Date());
     const from = this.addLocalDays(today, -30);
     this.fromDate.set(this.fmtDate(from));
     this.toDate.set(this.fmtDate(today));
-    this.loadTenantCurrency();
-    this.loadReport();
     const now = new Date();
     this.attendanceExcelMonth.set(
       `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
     );
     this.translate.onLangChange.subscribe(() => this.reportIntlRevision.update((n) => n + 1));
+    this.checkReportsPinGate();
+  }
+
+  private checkReportsPinGate(): void {
+    this.api.getTenantSettings().subscribe({
+      next: (s) => {
+        const code = s.currency_code || null;
+        this.currencyCode.set(code);
+        this.currency.set(code ? currencySymbolFromIsoCode(this.translate, code) : s.currency || '€');
+
+        const pin = (s.history_delete_pin || '').trim();
+        if (!pin) {
+          this.reportsUnlocked.set(true);
+          this.initReportsData();
+          return;
+        }
+        this.reportsPinRequired.set(true);
+        this.expectedReportsPin = pin;
+      },
+      error: () => {
+        // Settings unreachable — don't lock owners out of their own reports over a transient error.
+        this.reportsUnlocked.set(true);
+        this.initReportsData();
+      },
+    });
+  }
+
+  submitReportsPin(): void {
+    const entered = this.reportsPinInput().trim();
+    if (!entered || entered !== this.expectedReportsPin) {
+      this.reportsPinError.set(this.translate.instant('REPORTS.PIN_INCORRECT'));
+      return;
+    }
+    this.reportsPinError.set('');
+    this.reportsPinInput.set('');
+    this.reportsUnlocked.set(true);
+    this.initReportsData();
+  }
+
+  private initReportsData(): void {
+    this.loadReport();
     this.loadStaffActionLog();
     if (this.canViewAttendance()) {
       this.api.getUsers().subscribe({

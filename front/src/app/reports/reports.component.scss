@@ -768,6 +768,55 @@
   margin-top: var(--space-2);
 }
 
+.reports-pin-gate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: var(--space-6);
+}
+
+.reports-pin-card {
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg, 12px);
+  padding: var(--space-6);
+  max-width: 360px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+
+  h2 {
+    margin: 0 0 var(--space-2);
+    font-size: 1.125rem;
+  }
+
+  .muted {
+    margin: 0 0 var(--space-4);
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+  }
+
+  input {
+    width: 100%;
+    padding: var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: 1.25rem;
+    letter-spacing: 0.3em;
+    text-align: center;
+    margin-bottom: var(--space-3);
+  }
+
+  .btn {
+    width: 100%;
+  }
+
+  .error-banner {
+    margin-bottom: var(--space-3);
+  }
+}
+
 .staff-log-filters {
   display: flex;
   flex-wrap: wrap;

@@ -1950,6 +1950,15 @@ export interface SalesReport {
     tips_cents?: number;
     order_count: number;
   }[];
+  /** "Best customers" — only orders we could identify (name, phone, or billing customer) */
+  by_customer?: {
+    customer_name: string;
+    revenue_cents: number;
+    cost_cents?: number;
+    profit_cents?: number;
+    order_count: number;
+    average_order_cents: number;
+  }[];
   reservations?: {
     total: number;
     by_source: { source: string; count: number }[];

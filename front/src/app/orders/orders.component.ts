@@ -1672,7 +1672,15 @@ ModuleRegistry.registerModules([
                       <button type="button" class="btn btn-secondary btn-sm" (click)="sendSriInvoiceEmail(vOrder)" [disabled]="sendingSriInvoiceEmail()">
                         {{ vOrder.sri_comprobante.email_sent_at ? ('ORDERS.SRI_RESEND_EMAIL' | translate) : ('ORDERS.SRI_SEND_EMAIL' | translate) }}
                       </button>
+                    } @else if (sriInvoicingEnabled() && vOrder.status !== 'cancelled') {
+                      <button type="button" class="btn btn-secondary btn-sm" (click)="issueSriInvoiceForOrder(vOrder)" [disabled]="issuingSriInvoice()">{{ 'ORDERS.SRI_ISSUE_INVOICE' | translate }}</button>
                     }
+                  </div>
+                } @else if (sriInvoicingEnabled() && vOrder.status !== 'cancelled') {
+                  <div class="view-order-sri">
+                    <span class="view-order-meta-label">{{ 'ORDERS.GRID.INVOICED' | translate }}</span>
+                    <span>{{ 'ORDERS.GRID.NOT_INVOICED' | translate }}</span>
+                    <button type="button" class="btn btn-secondary btn-sm" (click)="issueSriInvoiceForOrder(vOrder)" [disabled]="issuingSriInvoice()">{{ 'ORDERS.SRI_ISSUE_INVOICE' | translate }}</button>
                   </div>
                 }
               </div>
@@ -1832,11 +1840,12 @@ ModuleRegistry.registerModules([
                     <option value="cash">{{ 'ORDERS.CASH' | translate }}</option>
                     <option value="terminal">{{ 'ORDERS.CARD_TERMINAL' | translate }}</option>
                     <option value="transfer">{{ 'PAYMENT_METHOD.transfer' | translate }}</option>
+                    <option value="pedidosya">{{ 'PAYMENT_METHOD.pedidosya' | translate }}</option>
                     <option value="stripe">{{ 'ORDERS.STRIPE_ONLINE' | translate }}</option>
                     <option value="other">{{ 'ORDERS.OTHER' | translate }}</option>
                   </select>
                 </div>
-                @if (paymentMethod === 'transfer') {
+                @if (paymentMethodHasReference()) {
                   <div class="form-group">
                     <label for="payment-reference">{{ 'ORDERS.PAYMENT_REFERENCE' | translate }}</label>
                     <input
@@ -3343,6 +3352,11 @@ export class OrdersComponent implements OnInit, OnDestroy {
   paymentModalFinishMode = signal(false);
   paymentMethod = 'cash';
   paymentReference = '';
+  /** Payment methods settled outside the POS (bank transfer, delivery platform) where staff
+   * type in the platform/bank's own confirmation number to reconcile later. */
+  paymentMethodHasReference(): boolean {
+    return this.paymentMethod === 'transfer' || this.paymentMethod === 'pedidosya';
+  }
   /** Selected POS tip preset percent; 0 = no tip */
   paymentTipPercent = 0;
   /** Collapsed by default in the payment modal — opened on demand so they don't crowd the checkout flow. */
@@ -3450,11 +3464,21 @@ export class OrdersComponent implements OnInit, OnDestroy {
 
   // Computed signals for separating active and completed orders
   // Paid orders stay active until delivered (status → completed), so waiters/kitchen/bar still see them
+  /** A "paid" order (e.g. pre-paid before food is out) still needs kitchen/waiter follow-up
+   * until every active item is actually delivered — that's when it's truly done. Mirrors the
+   * backend's own item-status exclusions (customer-removed or cancelled don't count). */
+  private isOrderFullyDelivered(order: Order): boolean {
+    const relevant = (order.items || []).filter(i => !i.removed_by_customer && i.status !== 'cancelled');
+    if (!relevant.length) return false;
+    return relevant.every(i => i.status === 'delivered');
+  }
+
   activeOrders = computed(() => {
     const tid = this.tableScopeId();
-    let list = this.orders().filter(o =>
-      ['pending', 'preparing', 'ready', 'out_for_delivery', 'partially_delivered', 'paid'].includes(o.status)
-    );
+    let list = this.orders().filter(o => {
+      if (o.status === 'paid') return !this.isOrderFullyDelivered(o);
+      return ['pending', 'preparing', 'ready', 'out_for_delivery', 'partially_delivered'].includes(o.status);
+    });
     if (tid != null) list = list.filter(o => o.table_id === tid);
     return [...list].sort((a, b) => {
       if (!!a.staff_urgent !== !!b.staff_urgent) {
@@ -3591,10 +3615,11 @@ export class OrdersComponent implements OnInit, OnDestroy {
   });
   /** Satisfecho Delivery + marketplace delivery orders still pending delivery (Delivery tab). Completed/cancelled ones live in History. */
   deliveryOrders = computed(() => {
-    return this.orders().filter(o =>
-      this.isDeliveryChannel(o) &&
-      ['pending', 'preparing', 'ready', 'out_for_delivery', 'partially_delivered', 'paid'].includes(o.status)
-    );
+    return this.orders().filter(o => {
+      if (!this.isDeliveryChannel(o)) return false;
+      if (o.status === 'paid') return !this.isOrderFullyDelivered(o);
+      return ['pending', 'preparing', 'ready', 'out_for_delivery', 'partially_delivered'].includes(o.status);
+    });
   });
 
   // AG Grid configuration - custom light theme matching app colors
@@ -3628,6 +3653,21 @@ export class OrdersComponent implements OnInit, OnDestroy {
       return `${currencySymbol}${(value / 100).toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     };
     return [
+      {
+        headerName: '',
+        width: 56,
+        sortable: false,
+        filter: false,
+        pinned: 'left',
+        cellRenderer: (params: ICellRendererParams) => {
+          const id = params.data?.id;
+          if (id == null) return '';
+          const title = this.translate.instant('ORDERS.VIEW_ORDER');
+          const safeTitle = (title || 'View').replace(/"/g, '&quot;');
+          const icon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+          return `<button type="button" class="btn-view-order-row" data-order-id="${id}" title="${safeTitle}" style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;padding:0;cursor:pointer;background:#fff;color:#333;border:1px solid #ddd;border-radius:8px;">${icon}</button>`;
+        },
+      },
       {
         field: 'id',
         headerName: this.translate.instant('ORDERS.GRID.ORDER_NUMBER'),
@@ -3667,6 +3707,10 @@ export class OrdersComponent implements OnInit, OnDestroy {
         field: 'payment_method',
         headerName: this.translate.instant('ORDERS.GRID.PAYMENT_METHOD'),
         width: 130,
+        // The dedicated "Método de pago" dropdown above the grid already filters this exactly
+        // (and drives the total/CSV export); AG-Grid's own column filter would stack silently
+        // on top of it, filtering on the untranslated raw value with no visible indicator here.
+        filter: false,
         valueFormatter: (params) => {
           if (!params.value) return '-';
           return this.translate.instant(`PAYMENT_METHOD.${params.value}`) || params.value;
@@ -3682,6 +3726,8 @@ export class OrdersComponent implements OnInit, OnDestroy {
         field: 'status',
         headerName: this.translate.instant('ORDERS.GRID.STATUS'),
         width: 120,
+        // Same reasoning as payment_method above: the "Estado" dropdown already filters this.
+        filter: false,
         cellRenderer: (params: ICellRendererParams) => {
           const status = params.value;
           const statusLabel = this.translate.instant(`ORDER_STATUS.${status}`) || status;
@@ -3765,11 +3811,13 @@ export class OrdersComponent implements OnInit, OnDestroy {
         filter: false,
         cellRenderer: (params: ICellRendererParams) => {
           const id = params.data?.id;
-          if (id == null) return '';
-          const title = this.translate.instant('ORDERS.VIEW_ORDER');
-          const safeTitle = (title || 'View').replace(/"/g, '&quot;');
-          const icon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
-          return `<button type="button" class="btn-view-order-row" data-order-id="${id}" title="${safeTitle}" style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;padding:0;cursor:pointer;background:#fff;color:#333;border:1px solid #ddd;border-radius:8px;">${icon}</button>`;
+          const status = params.data?.status;
+          const estado = params.data?.sri_comprobante?.estado;
+          if (id == null || !this.sriInvoicingEnabled() || status === 'cancelled' || estado === 'AUT') return '';
+          const title = this.translate.instant('ORDERS.SRI_ISSUE_INVOICE');
+          const safeTitle = (title || 'Issue SRI invoice').replace(/"/g, '&quot;');
+          const icon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="11" y2="11"/></svg>';
+          return `<button type="button" class="btn-issue-sri-row" data-order-id="${id}" title="${safeTitle}" style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;padding:0;cursor:pointer;background:#fff;color:#D97706;border:1px solid #ddd;border-radius:8px;">${icon}</button>`;
         },
       },
       {
@@ -3952,9 +4000,10 @@ export class OrdersComponent implements OnInit, OnDestroy {
         : NaN;
 
     /** Resolve focus using full order list (ignore table scope filter). */
-    const rawActive = this.orders().filter(o =>
-      ['pending', 'preparing', 'ready', 'out_for_delivery', 'partially_delivered', 'paid'].includes(o.status)
-    );
+    const rawActive = this.orders().filter(o => {
+      if (o.status === 'paid') return !this.isOrderFullyDelivered(o);
+      return ['pending', 'preparing', 'ready', 'out_for_delivery', 'partially_delivered'].includes(o.status);
+    });
     const rawNotPaid = this.orders().filter(o => o.status === 'completed' && !o.paid_at);
 
     let preserveTableId: number | null = null;
@@ -3996,9 +4045,9 @@ export class OrdersComponent implements OnInit, OnDestroy {
     } else if (Number.isFinite(focusTableId) && focusTableId > 0) {
       preserveTableId = focusTableId;
       const forTable = this.orders().filter(o => o.table_id === focusTableId);
-      const activeStatuses = ['pending', 'preparing', 'ready', 'out_for_delivery', 'partially_delivered', 'paid'];
+      const activeStatuses = ['pending', 'preparing', 'ready', 'out_for_delivery', 'partially_delivered'];
       const activeForTable = forTable
-        .filter(o => activeStatuses.includes(o.status))
+        .filter(o => o.status === 'paid' ? !this.isOrderFullyDelivered(o) : activeStatuses.includes(o.status))
         .sort((a, b) => (b.staff_urgent ? 1 : 0) - (a.staff_urgent ? 1 : 0) || a.id - b.id);
       if (activeForTable.length > 0) {
         mode = 'active';
@@ -5032,10 +5081,17 @@ export class OrdersComponent implements OnInit, OnDestroy {
     const editBtn = target.closest('.btn-edit-order-row');
     const deleteBtn = target.closest('.btn-delete-order-row');
     const rideBtn = target.closest('.btn-ride-download-row');
+    const issueSriBtn = target.closest('.btn-issue-sri-row');
     if (viewBtn) {
       const id = +(viewBtn.getAttribute('data-order-id') || 0);
       const order = this.orders().find(o => o.id === id);
       if (order) this.openViewOrderModal(order);
+      return;
+    }
+    if (issueSriBtn) {
+      const id = +(issueSriBtn.getAttribute('data-order-id') || 0);
+      const order = this.orders().find(o => o.id === id);
+      if (order) this.issueSriInvoiceForOrder(order);
       return;
     }
     if (rideBtn) {
@@ -5174,6 +5230,12 @@ export class OrdersComponent implements OnInit, OnDestroy {
   }
 
   private pollSriInvoiceStatus(orderId: number, comp: SriComprobantePublic, attempt = 0): void {
+    if (this.editOrder()?.id === orderId) {
+      this.editOrder.set({ ...this.editOrder()!, sri_comprobante: comp });
+    }
+    if (this.viewOrder()?.id === orderId) {
+      this.viewOrder.set({ ...this.viewOrder()!, sri_comprobante: comp });
+    }
     if (comp.estado === 'AUT') {
       this.issuingSriInvoice.set(false);
       this.showToast(this.translate.instant('ORDERS.SRI_AUTHORIZED'), 'success');
@@ -6249,7 +6311,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
         tipEntryMode: 'overpayment' as const,
         tipAmountCents: tip,
         amountPaidCents: paid > 0 ? paid : undefined,
-        paymentReference: this.paymentMethod === 'transfer' ? this.paymentReference.trim() : undefined,
+        paymentReference: this.paymentMethodHasReference() ? this.paymentReference.trim() : undefined,
       };
       const req = this.paymentModalFinishMode()
         ? this.api.finishOrder(order.id, this.paymentMethod, opts)
@@ -6281,7 +6343,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     const presetOpts = {
       tipEntryMode: 'preset' as const,
       tipPercent: tip,
-      paymentReference: this.paymentMethod === 'transfer' ? this.paymentReference.trim() : undefined,
+      paymentReference: this.paymentMethodHasReference() ? this.paymentReference.trim() : undefined,
     };
     const req = this.paymentModalFinishMode()
       ? this.api.finishOrder(order.id, this.paymentMethod, presetOpts)
