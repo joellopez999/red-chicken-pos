@@ -15,8 +15,9 @@ errores"). Incluye botones para encender/apagar/reiniciar el stack
 
 ## Instalación
 
-1. Copiar `server.py`, `index.html` e `icon.png` a `/home/imac/pos-dashboard/`
-   (la ruta está fija en `server.py` vía `REPO_DIR` y en el `.service`).
+1. Copiar `server.py`, `index.html`, `icon.png` y `pos-dashboard` (dar
+   permiso de ejecución) a `/home/imac/pos-dashboard/` (la ruta está fija
+   en `server.py` vía `REPO_DIR` y en el `.service`).
 2. Instalar el servicio de usuario:
    ```sh
    mkdir -p ~/.config/systemd/user
@@ -24,8 +25,13 @@ errores"). Incluye botones para encender/apagar/reiniciar el stack
    systemctl --user daemon-reload
    systemctl --user enable --now pos-dashboard.service
    ```
-3. `./pos-dashboard` abre el panel en el navegador (arranca el servicio si
-   hace falta).
+3. Copiar `pos-dashboard.desktop` a `~/.local/share/applications/` para que
+   aparezca como ícono en el menú de aplicaciones (ajustar la URL de la
+   plataforma dentro de `pos-dashboard` si cambia el dominio).
+4. `./pos-dashboard` abre la plataforma y el panel de control, cada uno en
+   su pestaña del navegador (arranca el servicio del panel si hace falta).
+   Un solo ícono en el menú de aplicaciones ("Red Chicken POS") ejecuta
+   este mismo script.
 
 Tras editar `server.py`, reiniciar con `systemctl --user restart pos-dashboard.service`
 para que tome los cambios (`index.html` se sirve leyendo el archivo en cada

@@ -1,5 +1,6 @@
 #!/bin/bash
-# Abre el panel de Red Chicken POS; arranca el servicio si no está corriendo.
+# Abre la plataforma Red Chicken POS y su panel de control, cada uno en su
+# propia pestaña; arranca el servicio del panel si no está corriendo.
 set -e
 
 if ! systemctl --user is-active --quiet pos-dashboard.service; then
@@ -7,4 +8,5 @@ if ! systemctl --user is-active --quiet pos-dashboard.service; then
   sleep 1
 fi
 
+xdg-open "https://pos.redchickenec.com" >/dev/null 2>&1 &
 xdg-open "http://127.0.0.1:8090" >/dev/null 2>&1 &

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Red Chicken POS
+Comment=Abrir la plataforma y el panel de control (cada uno en su pestaña)
+Exec=/home/imac/pos-dashboard/pos-dashboard
+Icon=/home/imac/pos-dashboard/icon.png
+Terminal=false
+Categories=Utility;
