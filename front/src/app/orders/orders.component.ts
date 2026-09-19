@@ -3565,7 +3565,19 @@ export class OrdersComponent implements OnInit, OnDestroy {
       'ID', 'Fecha', 'Hora', 'Canal', 'Mesa/Cliente', 'Items',
       'Subtotal', 'Impuestos', 'Total', 'Estado', 'Metodo de pago', 'No. comprobante', 'Facturado SRI', 'No. autorizacion',
     ];
-    const escapeCsv = (value: string) => `"${(value ?? '').replace(/"/g, '""')}"`;
+    // Only quote a field when the CSV format actually requires it (comma/quote/newline).
+    // Quoting every field — including plain numbers like "14.90" — makes LibreOffice's
+    // default CSV import ("Quoted field as text" is on by default) treat them as text
+    // instead of numbers, so totals can't be summed. See escapeCsvText below for the two
+    // columns that DO need to stay text on purpose.
+    const escapeCsv = (value: string) => {
+      const v = value ?? '';
+      return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    };
+    // Force-quote long numeric-looking values (bank/PedidosYa reference, SRI's 49-digit
+    // authorization number) so spreadsheet apps don't "helpfully" reinterpret them as
+    // numbers, which silently corrupts them via scientific notation / float rounding.
+    const escapeCsvText = (value: string) => `"${(value ?? '').replace(/"/g, '""')}"`;
     const centsToPlainAmount = (cents: number | null | undefined) => ((cents ?? 0) / 100).toFixed(2);
     const lines = [header.map(escapeCsv).join(',')];
     for (const o of rows) {
@@ -3577,21 +3589,21 @@ export class OrdersComponent implements OnInit, OnDestroy {
       const itemsSummary = (o.items || []).map(it => `${it.quantity}x ${it.product_name || ''}`).join('; ');
       const sri = o.sri_comprobante;
       lines.push([
-        String(o.id),
-        created.toLocaleDateString('es-EC'),
-        created.toLocaleTimeString('es-EC'),
-        o.order_channel || 'table',
-        o.customer_name || o.table_name || '',
-        itemsSummary,
-        centsToPlainAmount(o.subtotal_cents ?? o.total_cents),
-        centsToPlainAmount(o.tax_cents),
-        centsToPlainAmount(o.total_cents),
-        o.status,
-        o.payment_method || '',
-        o.payment_reference || '',
-        sri?.estado || '',
-        sri?.numero_autorizacion || '',
-      ].map(escapeCsv).join(','));
+        escapeCsv(String(o.id)),
+        escapeCsv(created.toLocaleDateString('es-EC')),
+        escapeCsv(created.toLocaleTimeString('es-EC')),
+        escapeCsv(o.order_channel || 'table'),
+        escapeCsv(o.customer_name || o.table_name || ''),
+        escapeCsv(itemsSummary),
+        escapeCsv(centsToPlainAmount(o.subtotal_cents ?? o.total_cents)),
+        escapeCsv(centsToPlainAmount(o.tax_cents)),
+        escapeCsv(centsToPlainAmount(o.total_cents)),
+        escapeCsv(o.status),
+        escapeCsv(o.payment_method || ''),
+        escapeCsvText(o.payment_reference || ''),
+        escapeCsv(sri?.estado || ''),
+        escapeCsvText(sri?.numero_autorizacion || ''),
+      ].join(','));
     }
     const csv = '﻿' + lines.join('\r\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
