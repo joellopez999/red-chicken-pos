@@ -21,6 +21,9 @@ interface CartItem {
   customization_summary?: string | null;
   status?: string;  // Item status from backend
   itemId?: number;  // Backend item ID for editing
+  /** Stable per-line identity, assigned once when the line is created. Used for the cart's
+   * @for track (see getCartLineKey below for why the render identity can't be that key). */
+  lineId: string;
 }
 
 interface PlacedOrder {
@@ -79,8 +82,12 @@ export class MenuComponent implements OnInit, OnDestroy {
   // Cart & Orders
   cart = signal<CartItem[]>([]);
   orderNotes = '';
-  /** Cart line keys with expanded per-item comment field */
+  /** Cart line ids with expanded per-item comment field */
   expandedCommentKeys = signal<Set<string>>(new Set());
+  /** Counter backing CartItem.lineId — a stable render identity distinct from
+   * getCartLineKey (product+customization+notes), which changes on every keystroke
+   * in the notes field and must never be used as the cart's @for track. */
+  private nextCartLineId = 1;
   readonly maxNoteLength = 500;
   submitting = signal(false);
   placedOrders = signal<PlacedOrder[]>([]);
@@ -670,33 +677,23 @@ export class MenuComponent implements OnInit, OnDestroy {
   }
 
   toggleCartItemComment(item: CartItem): void {
-    const key = this.getCartLineKey(item);
     this.expandedCommentKeys.update(set => {
       const next = new Set(set);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(item.lineId)) next.delete(item.lineId);
+      else next.add(item.lineId);
       return next;
     });
   }
 
   isCartItemCommentExpanded(item: CartItem): boolean {
-    return this.expandedCommentKeys().has(this.getCartLineKey(item));
+    return this.expandedCommentKeys().has(item.lineId);
   }
 
   updateCartItemNotes(item: CartItem, notes: string): void {
     const trimmed = notes.slice(0, this.maxNoteLength);
-    const oldKey = this.getCartLineKey(item);
     this.cart.update(items =>
-      items.map(i => (this.getCartLineKey(i) === oldKey ? { ...i, notes: trimmed } : i))
+      items.map(i => (i.lineId === item.lineId ? { ...i, notes: trimmed } : i))
     );
-    if (trimmed.trim()) {
-      this.expandedCommentKeys.update(set => {
-        const next = new Set(set);
-        next.add(`${this.getProductKey(item.product, item.customization_answers)}|${trimmed.trim()}`);
-        next.delete(oldKey);
-        return next;
-      });
-    }
   }
 
   getWineTypeClass(wineType: string): string {
@@ -782,7 +779,13 @@ export class MenuComponent implements OnInit, OnDestroy {
   // CART OPERATIONS
   // ============================================
   addToCart(product: Product, customizationAnswers?: Record<string, string | number | string[]>) {
-    const newLine: CartItem = { product, quantity: 1, notes: '', customization_answers: customizationAnswers };
+    const newLine: CartItem = {
+      product,
+      quantity: 1,
+      notes: '',
+      customization_answers: customizationAnswers,
+      lineId: String(this.nextCartLineId++),
+    };
     const lineKey = this.getCartLineKey(newLine);
     this.cart.update(items => {
       const existing = items.find(i => this.getCartLineKey(i) === lineKey);
@@ -1235,7 +1238,8 @@ export class MenuComponent implements OnInit, OnDestroy {
               customization_answers: item.customization_answers || undefined,
               customization_summary: item.customization_summary ?? undefined,
               status: item.status,
-              itemId: item.id
+              itemId: item.id,
+              lineId: String(item.id),
             } as CartItem))),
             notes: response.order.notes || '',
             total: response.order.total_cents,
