@@ -103,6 +103,13 @@
   .cost-estimate .cost-rate { color: var(--text); font-weight: 600; }
   .cost-estimate h4 { margin: 14px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
   .cost-estimate h4:first-child { margin-top: 0; }
+  .gauges-card h2 { margin-bottom: 18px; }
+  .gauges-row {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 28px;
+  }
+  .gauge-item { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .gauge-title { font-size: 13px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: .04em; }
+  .gauge-sub { font-size: 12px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -110,6 +117,15 @@
   <div class="sub" id="updated">Cargando estado...</div>
 
   <div class="grid">
+    <div class="card gauges-card" style="grid-column: 1 / -1;">
+      <h2>Uso en tiempo real</h2>
+      <div class="gauges-row">
+        <div class="gauge-item"><div id="gaugeCpu"></div><div class="gauge-title">CPU</div></div>
+        <div class="gauge-item"><div id="gaugeRam"></div><div class="gauge-title">RAM</div></div>
+        <div class="gauge-item"><div id="gaugeDisk"></div><div class="gauge-title">Disco</div></div>
+      </div>
+    </div>
+
     <div class="card status-hero">
       <div class="dot" id="statusDot"></div>
       <div>
@@ -250,6 +266,59 @@ function pillClass(state) {
 
 function fmtBool(b) { return b ? 'Sí' : 'No'; }
 
+function gaugeColor(percent) {
+  if (percent == null) return '#9ca3af';
+  if (percent >= 90) return '#dc2626';
+  if (percent >= 70) return '#d97706';
+  return '#16a34a';
+}
+
+function ringGaugeSvg(percent, opts) {
+  opts = opts || {};
+  const size = opts.size || 160, stroke = opts.stroke || 16;
+  const color = opts.color || '#16a34a', track = '#e5e7eb';
+  const p = percent == null ? 0 : Math.max(0, Math.min(100, percent));
+  const cx = size / 2, cy = size / 2, r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const offset = c - (c * p / 100);
+  const label = percent == null ? '—' : `${p.toFixed(0)}%`;
+  return `
+    <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${track}" stroke-width="${stroke}"/>
+      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}"
+        stroke-linecap="round" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${offset.toFixed(2)}"
+        transform="rotate(-90 ${cx} ${cy})"/>
+      <text x="${cx}" y="${cy - 2}" text-anchor="middle" font-size="${Math.round(size * 0.2)}" font-weight="800" fill="#1c1e21">${label}</text>
+      <text x="${cx}" y="${cy + 20}" text-anchor="middle" font-size="${Math.round(size * 0.085)}" fill="#6b7280">${opts.smallLabel || ''}</text>
+    </svg>
+  `;
+}
+
+function renderGauges(data) {
+  const m = data.metrics || {};
+  const d = data.disk || {};
+  const cpuPct = m.cpu_percent;
+  const ramPct = m.mem_percent;
+  const diskPct = d.host_used_percent;
+
+  document.getElementById('gaugeCpu').innerHTML = ringGaugeSvg(cpuPct, {
+    color: gaugeColor(cpuPct),
+    smallLabel: cpuPct != null ? 'en uso' : 'calculando…',
+  });
+  document.getElementById('gaugeRam').innerHTML = ringGaugeSvg(ramPct, {
+    color: gaugeColor(ramPct),
+    smallLabel: (m.mem_used_mb != null && m.mem_total_mb != null)
+      ? `${(m.mem_used_mb / 1024).toFixed(1)} / ${(m.mem_total_mb / 1024).toFixed(1)} GB`
+      : '',
+  });
+  document.getElementById('gaugeDisk').innerHTML = ringGaugeSvg(diskPct, {
+    color: gaugeColor(diskPct),
+    smallLabel: (d.host_used_gb != null && d.host_total_gb != null)
+      ? `${d.host_used_gb} / ${d.host_total_gb} GB`
+      : '',
+  });
+}
+
 async function refresh() {
   let data;
   try {
@@ -261,6 +330,7 @@ async function refresh() {
   }
 
   document.getElementById('updated').textContent = 'Actualizado ' + new Date().toLocaleTimeString();
+  renderGauges(data);
 
   const dot = document.getElementById('statusDot');
   const text = document.getElementById('statusText');

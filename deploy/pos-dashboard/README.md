@@ -4,12 +4,14 @@ Panel de estado/control para uso solo en el servidor donde corre el POS. Sin
 dependencias externas (solo stdlib de Python). Escucha en `127.0.0.1:8090`,
 no está expuesto a la red ni a Tailscale Funnel.
 
-Muestra: estado de los contenedores Docker, acceso Tailscale, disco,
-recursos del sistema (CPU/RAM/energía, en vivo e histórico por rango de
-1h/6h/24h/7 días), estadísticas del negocio (con filtros por fecha y
-producto), y un log de actuaciones del personal y errores del backend (con
-filtros por fecha, tipo de acción y "solo errores"). Incluye botones para
-encender/apagar/reiniciar el stack (`docker compose`).
+Muestra: 3 medidores circulares de uso en tiempo real (CPU/RAM/disco, lo
+primero que se ve al abrir el panel), estado de los contenedores Docker,
+acceso Tailscale, disco, recursos del sistema (CPU/RAM/energía, en vivo e
+histórico por rango de 1h/6h/24h/7 días), estadísticas del negocio (con
+filtros por fecha y producto), y un log de actuaciones del personal y
+errores del backend (con filtros por fecha, tipo de acción y "solo
+errores"). Incluye botones para encender/apagar/reiniciar el stack
+(`docker compose`).
 
 ## Instalación
 
