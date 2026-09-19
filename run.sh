@@ -259,6 +259,10 @@ if [ "$DEV_MODE" = true ]; then
     echo "📱 LAN access enabled for mobile testing"
     export CORS_ORIGINS="*"
 else
+    # NOTE: on the Tailscale-Funnel-fronted deployment (this machine), do NOT use this
+    # mode as-is — it also swaps HAProxy to haproxy.prod.cfg + certbot certs for ports
+    # 80/443, which don't exist here. Use docker-compose.front-prod.yml instead (see
+    # deploy/pos-dashboard/README.md) to get the compiled frontend without touching HAProxy.
     echo "Starting POS Application in PRODUCTION mode..."
     COMPOSE_FILE="-f docker-compose.yml -f docker-compose.prod.yml"
     MODE_DESC="Production (optimized build)"

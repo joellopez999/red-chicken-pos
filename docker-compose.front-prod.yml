@@ -1,0 +1,23 @@
+# Serves the frontend as a real compiled production build (Angular production-static
+# build served by nginx) instead of the Angular dev server (`ng serve --poll 2000`),
+# while keeping this deployment's actual topology — HAProxy on the internal dev port,
+# fronted by Tailscale Funnel, which terminates TLS — exactly as docker-compose.dev.yml
+# already sets it up. docker-compose.prod.yml is NOT used here: it also swaps HAProxy
+# to haproxy.prod.cfg with certbot-issued certs on ports 80/443, which assumes a real
+# public domain and doesn't match this Tailscale-fronted setup.
+#
+# Use with:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.front-prod.yml up -d --build front
+services:
+  front:
+    build:
+      context: ./front
+      dockerfile: Dockerfile.prod
+      args:
+        COMMIT_HASH: ${COMMIT_HASH:-}
+    environment:
+      - API_URL=${API_URL:-/api}
+      - WS_URL=${WS_URL:-}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY:-}
+      - GOOGLE_ANALYTICS_MEASUREMENT_ID=${GOOGLE_ANALYTICS_MEASUREMENT_ID:-}
+    volumes: !reset []

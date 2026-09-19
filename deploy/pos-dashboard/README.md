@@ -27,3 +27,14 @@ el stack (`docker compose`).
 Tras editar `server.py`, reiniciar con `systemctl --user restart pos-dashboard.service`
 para que tome los cambios (`index.html` se sirve leyendo el archivo en cada
 request, sin necesidad de reiniciar).
+
+## Frontend: build de producción, no `ng serve`
+
+`COMPOSE_BASE` incluye `docker-compose.front-prod.yml` (raíz del repo) para
+que los botones de encender/reiniciar levanten el frontend como build
+compilado (nginx) en vez del servidor de desarrollo de Angular. **No** usar
+`docker-compose.prod.yml` directamente en este despliegue — ese archivo
+también reemplaza HAProxy por `haproxy.prod.cfg` con certificados de
+certbot para los puertos 80/443, pensado para un dominio público propio, no
+para este esquema con Tailscale Funnel. Ver el comentario al inicio de
+`docker-compose.front-prod.yml` para más detalle.

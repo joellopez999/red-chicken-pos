@@ -21,6 +21,7 @@ COMPOSE_BASE = [
     "docker", "compose",
     "-f", "docker-compose.yml",
     "-f", "docker-compose.dev.yml",
+    "-f", "docker-compose.front-prod.yml",  # real compiled frontend build, not `ng serve`
     "--env-file", "config.env",
 ]
 FRONTEND_PORT = 8080
