@@ -60,6 +60,7 @@ class OrderChannel(str, Enum):
     satisfecho_delivery = "satisfecho_delivery"  # first-party Satisfecho Delivery
     marketplace = "marketplace"  # third-party (Glovo/Uber); usually paired with delivery_integration_id
     manual_invoice = "manual_invoice"  # staff-entered sale created only to issue a fiscal invoice
+    ai_phone = "ai_phone"  # taken by the AI phone-order assistant, staff-accepted from a draft
 
 
 class BusinessType(str, Enum):
@@ -2551,6 +2552,46 @@ class StaffActionLog(SQLModel, table=True):
     error_message: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     request_path: str | None = Field(default=None, max_length=255)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class AiPhoneOrderStatus(str, Enum):
+    in_progress = "in_progress"  # conversation still happening
+    pending_review = "pending_review"  # customer finished; waiting on staff to accept/reject
+    accepted = "accepted"  # became a real Order
+    rejected = "rejected"
+
+
+class AiPhoneOrder(SQLModel, table=True):
+    """Draft order built live by the AI phone-order assistant (see ai_phone_order_service.py).
+    Never touches the real order/kitchen flow directly — staff must accept it from the
+    "pendientes de aceptación" queue, which is what actually creates the Order/OrderItems."""
+
+    __tablename__ = "ai_phone_order"
+
+    id: int | None = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    phone_label: str = Field(default="Teléfono 1", max_length=50)
+    status: AiPhoneOrderStatus = Field(default=AiPhoneOrderStatus.in_progress, index=True)
+    # [{product_id, product_name, price_cents, quantity, notes}], built up via tool calls —
+    # always resolved against the real Product catalog, never free text from the model.
+    items: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    customer_note: str | None = Field(default=None, max_length=500)
+    # Full turn-by-turn conversation (role/content), kept so staff can sanity-check what was
+    # actually said before accepting an order they didn't personally hear.
+    transcript: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    accepted_by_user_id: int | None = Field(default=None, foreign_key="user.id")
+    accepted_at: datetime | None = None
+    resulting_order_id: int | None = Field(default=None, foreign_key="order.id")
+
+
+class AiPhoneOrderCreate(SQLModel):
+    phone_label: str = "Teléfono 1"
+
+
+class AiPhoneOrderTurn(SQLModel):
+    message: str
 
 
 class DeliveryIntegrationUpsert(SQLModel):

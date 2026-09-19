@@ -47,6 +47,7 @@ from .pricing_routes import router as pricing_router
 from .product_bulk_import_routes import router as product_bulk_import_router
 from .tenant_subcategory_routes import router as tenant_subcategory_router
 from .reports_routes import router as reports_router
+from .ai_phone_order_routes import router as ai_phone_order_router
 from .sri_routes import router as sri_router
 from .platform_routes import router as platform_router
 from .saas_routes import router as saas_router
@@ -665,6 +666,7 @@ app.include_router(
 # Reports (sales / revenue analysis)
 app.include_router(reports_router, prefix="/reports", tags=["Reports"])
 app.include_router(sri_router, tags=["SRI Invoicing"])
+app.include_router(ai_phone_order_router, tags=["AI Phone Orders"])
 app.include_router(attendance_router, prefix="/reports", tags=["Reports"])
 app.include_router(platform_router, prefix="/platform", tags=["Platform"])
 app.include_router(saas_router, prefix="/saas", tags=["SaaS billing"])

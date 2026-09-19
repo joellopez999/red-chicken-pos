@@ -167,6 +167,15 @@ class Settings(BaseSettings):
     )
     product_vision_model: str = Field(default="gpt-4o-mini", validation_alias="PRODUCT_VISION_MODEL")
 
+    # AI phone-order assistant (see ai_phone_order_service.py) — falls back to the vision key
+    # above if unset, since it's usually the same OpenAI account/key.
+    phone_order_ai_api_key: str = Field(default="", validation_alias="PHONE_ORDER_AI_API_KEY")
+    phone_order_ai_api_url: str = Field(
+        default="https://api.openai.com/v1/chat/completions",
+        validation_alias="PHONE_ORDER_AI_API_URL",
+    )
+    phone_order_ai_model: str = Field(default="gpt-4o-mini", validation_alias="PHONE_ORDER_AI_MODEL")
+
     # Production mode (enables secure cookies, stricter CORS, etc.)
     is_production: bool = Field(default=False, validation_alias="PRODUCTION")
 
