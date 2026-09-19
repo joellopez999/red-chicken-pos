@@ -101,6 +101,8 @@
   .cost-estimate .cost-figures span { color: var(--muted); font-size: 11px; }
   .cost-estimate .cost-formula { color: var(--muted); font-size: 11px; font-family: ui-monospace, monospace; }
   .cost-estimate .cost-rate { color: var(--text); font-weight: 600; }
+  .cost-estimate h4 { margin: 14px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+  .cost-estimate h4:first-child { margin-top: 0; }
 </style>
 </head>
 <body>
@@ -389,26 +391,42 @@ async function loadMetricsHistory(range) {
     <div class="chart-box"><h3>RAM %</h3>${buildSparkline(points, 'mem_percent', { color: '#2563eb', unit: '%' })}</div>
     <div class="chart-box"><h3>Energía (W)</h3>${data.power_available ? buildSparkline(points, 'power_watts', { color: '#d97706', unit: 'W' }) : powerNote}</div>
   `;
-  renderCostEstimate(data.cost_estimate);
+  renderCostEstimate(data.cost_estimate, data.total_estimate);
 }
 
-function renderCostEstimate(c) {
+function costBlock(c, title) {
+  return `
+    <h4>${title}</h4>
+    <div class="cost-figures">
+      <div><b>$${c.cost_usd_day.toFixed(3)}</b><span>por día</span></div>
+      <div><b>$${c.cost_usd_month.toFixed(2)}</b><span>por mes</span></div>
+      <div><b>$${c.cost_usd_year.toFixed(2)}</b><span>por año</span></div>
+      <div><b>${c.avg_watts} W</b><span>potencia promedio</span></div>
+    </div>
+  `;
+}
+
+function renderCostEstimate(c, total) {
   const el = document.getElementById('costEstimate');
   if (!c) {
     el.innerHTML = '<span class="chart-empty" style="height:auto;">Sin datos de energía suficientes todavía para estimar el costo en este rango.</span>';
     return;
   }
-  el.innerHTML = `
-    <div class="cost-figures">
-      <div><b>$${c.cost_usd_day.toFixed(3)}</b><span>por día</span></div>
-      <div><b>$${c.cost_usd_month.toFixed(2)}</b><span>por mes</span></div>
-      <div><b>$${c.cost_usd_year.toFixed(2)}</b><span>por año</span></div>
-      <div><b>${c.avg_watts} W</b><span>potencia promedio del rango</span></div>
+  const totalBlock = (total && total.cost) ? `
+    ${costBlock(total.cost, `Estimado de la máquina completa (${total.model})`)}
+    <div class="cost-formula">
+      Referencia de fábrica: <span class="cost-rate">${total.idle_watts_reference}W reposo / ${total.max_watts_reference}W máximo</span>
+      (medido, no de Apple) &nbsp;·&nbsp; Fórmula: ${total.formula}
+      <br>No es una medición real — solo un enchufe inteligente entre la iMac y la pared daría el consumo total exacto.
     </div>
+  ` : '';
+  el.innerHTML = `
+    ${costBlock(c, 'Solo procesador (medido con sensor RAPL)')}
     <div class="cost-formula">
       Tarifa usada: <span class="cost-rate">$${c.price_usd_per_kwh.toFixed(2)}/kWh</span>
       (promedio residencial Ecuador 2026, ARCONEL) &nbsp;·&nbsp; Fórmula: ${c.formula}
     </div>
+    ${totalBlock}
   `;
 }
 

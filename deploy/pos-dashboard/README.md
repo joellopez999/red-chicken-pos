@@ -79,3 +79,20 @@ Si ARCONEL ajusta la tarifa, se actualiza solo esa constante.
 Importante: el estimado usa el consumo del procesador (RAPL), no el de la
 máquina completa — es una cota inferior real, no el gasto eléctrico total
 del equipo.
+
+### Estimado de la máquina completa
+
+Además del estimado de solo-CPU, el panel muestra un segundo estimado para
+la iMac completa, combinando lo que sí medimos (CPU en vivo) con el consumo
+total real medido y publicado para este modelo exacto (iMac 21.5" Late 2015,
+i5 1.6GHz = iMac16,1): **33W en reposo, 58W a máxima carga**
+([fuente](https://www.tpcdb.com/product.php?id=2525)).
+
+Fórmula (constantes `IMAC_IDLE_TOTAL_WATTS`/`IMAC_MAX_TOTAL_WATTS` en
+`server.py`):
+```
+base_no_cpu   = promedio(33W, 58W) − CPU_promedio_medido
+total_estimado = base_no_cpu + CPU_medido_ahora
+```
+Sigue siendo una estimación, no una medición — un enchufe inteligente entre
+la iMac y la pared es la única forma de tener el consumo total exacto.

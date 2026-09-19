@@ -450,14 +450,41 @@ ENERGY_COST_FORMULA = (
 )
 
 
-def estimate_energy_cost(avg_watts):
-    """USD/día,mes,año for a given average power draw, at ELECTRICITY_PRICE_USD_PER_KWH.
-    Only covers what RAPL measures (CPU package) — see README for that caveat."""
+# Consumo TOTAL real medido para este modelo exacto (iMac 21.5", Late 2015, i5 1.6GHz
+# dual-core = iMac16,1) — RAPL no puede medir esto, así que se usa como referencia fija
+# de fábrica para estimar lo que gasta "todo lo demás" (pantalla, disco, placa, fuente).
+# Fuente: https://www.tpcdb.com/product.php?id=2525
+IMAC_MODEL_LABEL = "iMac 21.5\" Late 2015, i5 1.6GHz (iMac16,1)"
+IMAC_IDLE_TOTAL_WATTS = 33
+IMAC_MAX_TOTAL_WATTS = 58
+IMAC_AVG_TOTAL_WATTS = (IMAC_IDLE_TOTAL_WATTS + IMAC_MAX_TOTAL_WATTS) / 2  # 45.5 W de referencia
+
+TOTAL_ESTIMATE_FORMULA = (
+    f"base_no_cpu = referencia_fábrica_promedio ({IMAC_AVG_TOTAL_WATTS}W) − CPU_promedio_medido  ·  "
+    "total_estimado = base_no_cpu + CPU_medido_ahora"
+)
+
+
+def estimate_total_machine_watts(avg_cpu_watts, live_cpu_watts):
+    """Approximate whole-machine power by anchoring the part RAPL can't see (screen,
+    disk, board, PSU losses) to this exact iMac model's published idle/max wattage,
+    then adding back the live CPU reading so the total still moves with real load.
+    Not a real measurement — a smart plug between the iMac and the wall is the only
+    way to get the true total."""
+    if avg_cpu_watts is None or live_cpu_watts is None:
+        return None
+    non_cpu_baseline = max(0.0, IMAC_AVG_TOTAL_WATTS - avg_cpu_watts)
+    return round(non_cpu_baseline + live_cpu_watts, 1)
+
+
+def estimate_energy_cost(avg_watts, label="cpu"):
+    """USD/día,mes,año for a given average power draw, at ELECTRICITY_PRICE_USD_PER_KWH."""
     if avg_watts is None:
         return None
     kwh_per_day = (avg_watts / 1000) * 24
     cost_day = kwh_per_day * ELECTRICITY_PRICE_USD_PER_KWH
     return {
+        "label": label,
         "avg_watts": round(avg_watts, 1),
         "kwh_per_day": round(kwh_per_day, 3),
         "cost_usd_day": round(cost_day, 3),
@@ -483,14 +510,32 @@ def get_metrics_history(params):
         avg_power_row = conn.execute(
             "SELECT AVG(power_watts) FROM metrics WHERE ts >= ? AND power_watts IS NOT NULL", (since,)
         ).fetchone()
+        # Most recent single sample — a proxy for "right now" without calling take_reading()
+        # again here, which would fight with the sampler thread and the live status poll
+        # over the shared _last_reading delta state.
+        last_power_row = conn.execute(
+            "SELECT power_watts FROM metrics WHERE power_watts IS NOT NULL ORDER BY ts DESC LIMIT 1"
+        ).fetchone()
         conn.close()
     except sqlite3.Error:
         rows = []
         avg_power_row = (None,)
+        last_power_row = (None,)
+    avg_cpu_watts = avg_power_row[0]
+    live_cpu_watts = last_power_row[0] if last_power_row else None
     return {
         "range": range_key,
         "power_available": read_rapl_energy_uj() is not None,
-        "cost_estimate": estimate_energy_cost(avg_power_row[0]),
+        "cost_estimate": estimate_energy_cost(avg_cpu_watts, label="cpu"),
+        "total_estimate": {
+            "model": IMAC_MODEL_LABEL,
+            "idle_watts_reference": IMAC_IDLE_TOTAL_WATTS,
+            "max_watts_reference": IMAC_MAX_TOTAL_WATTS,
+            "formula": TOTAL_ESTIMATE_FORMULA,
+            "cost": estimate_energy_cost(
+                estimate_total_machine_watts(avg_cpu_watts, live_cpu_watts or avg_cpu_watts), label="total_estimado"
+            ),
+        } if avg_cpu_watts is not None else None,
         "points": [
             {
                 "ts": r[0],
