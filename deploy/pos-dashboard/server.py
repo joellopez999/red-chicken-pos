@@ -393,7 +393,34 @@ def take_reading():
             # Reflects whether the RAPL counter is actually readable right now (permissions
             # set up via the udev rule), not just whether the sysfs path exists.
             "power_available": energy_uj is not None,
+            "screen_idle": is_display_idle(),
         }
+
+
+def get_active_graphical_session_id():
+    """The seat0 graphical session (Wayland/X11) — not the systemd --user 'manager' session
+    that also shows up in `loginctl list-sessions` for this same user."""
+    rc, out, _ = run(["loginctl", "list-sessions", "--no-legend"])
+    if rc != 0:
+        return None
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 4 and parts[3] == "seat0":
+            return parts[0]
+    return None
+
+
+def is_display_idle():
+    """True once GNOME's own idle-delay (currently 900s — see gsettings
+    org.gnome.desktop.session idle-delay) has blanked the screen. Read via systemd-logind's
+    IdleHint rather than anything GNOME-specific, so it keeps working if the desktop
+    environment ever changes. Best-effort: assumes screen ON (False) if undetermined —
+    that's the conservative direction for a cost estimate (doesn't overstate savings)."""
+    sid = get_active_graphical_session_id()
+    if not sid:
+        return False
+    rc, out, _ = run(["loginctl", "show-session", sid, "-p", "IdleHint"])
+    return rc == 0 and out.strip() == "IdleHint=yes"
 
 
 def _metrics_db():
@@ -403,9 +430,13 @@ def _metrics_db():
         " ts INTEGER PRIMARY KEY,"
         " cpu_percent REAL,"
         " mem_percent REAL,"
-        " power_watts REAL"
+        " power_watts REAL,"
+        " screen_idle INTEGER"
         ")"
     )
+    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(metrics)")}
+    if "screen_idle" not in existing_cols:
+        conn.execute("ALTER TABLE metrics ADD COLUMN screen_idle INTEGER")
     return conn
 
 
@@ -416,8 +447,12 @@ def store_reading(reading):
         conn = _metrics_db()
         with conn:
             conn.execute(
-                "INSERT OR REPLACE INTO metrics (ts, cpu_percent, mem_percent, power_watts) VALUES (?, ?, ?, ?)",
-                (int(reading["ts"]), reading["cpu_percent"], reading["mem_percent"], reading["power_watts"]),
+                "INSERT OR REPLACE INTO metrics (ts, cpu_percent, mem_percent, power_watts, screen_idle) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    int(reading["ts"]), reading["cpu_percent"], reading["mem_percent"],
+                    reading["power_watts"], int(bool(reading.get("screen_idle"))),
+                ),
             )
             cutoff = int(time.time()) - METRICS_RETENTION_DAYS * 86400
             conn.execute("DELETE FROM metrics WHERE ts < ?", (cutoff,))
@@ -459,22 +494,34 @@ IMAC_IDLE_TOTAL_WATTS = 33
 IMAC_MAX_TOTAL_WATTS = 58
 IMAC_AVG_TOTAL_WATTS = (IMAC_IDLE_TOTAL_WATTS + IMAC_MAX_TOTAL_WATTS) / 2  # 45.5 W de referencia
 
+# GNOME apaga la pantalla tras 900s de inactividad (org.gnome.desktop.session idle-delay) —
+# confirmado en este equipo, y esperable que pase la mayor parte del tiempo así, ya que
+# nadie usa la pantalla física de un servidor. La referencia de fábrica (33W/58W) asume
+# pantalla encendida, así que sin este ajuste el estimado total queda sobrestimado durante
+# esos períodos. No es un valor medido — es una asunción típica para un panel LED de 21.5":
+# corregir aquí si se consigue una cifra real para este modelo.
+SCREEN_OFF_SAVINGS_WATTS = 15
+
 TOTAL_ESTIMATE_FORMULA = (
     f"base_no_cpu = referencia_fábrica_promedio ({IMAC_AVG_TOTAL_WATTS}W) − CPU_promedio_medido  ·  "
-    "total_estimado = base_no_cpu + CPU_medido_ahora"
+    f"base_ajustada = base_no_cpu − (fracción_tiempo_pantalla_apagada × {SCREEN_OFF_SAVINGS_WATTS}W)  ·  "
+    "total_estimado = base_ajustada + CPU_medido_ahora"
 )
 
 
-def estimate_total_machine_watts(avg_cpu_watts, live_cpu_watts):
+def estimate_total_machine_watts(avg_cpu_watts, screen_idle_fraction, live_cpu_watts):
     """Approximate whole-machine power by anchoring the part RAPL can't see (screen,
     disk, board, PSU losses) to this exact iMac model's published idle/max wattage,
-    then adding back the live CPU reading so the total still moves with real load.
+    discounted for however much of the period the screen was actually blanked, then
+    adding back the live CPU reading so the total still moves with real load.
     Not a real measurement — a smart plug between the iMac and the wall is the only
     way to get the true total."""
     if avg_cpu_watts is None or live_cpu_watts is None:
         return None
     non_cpu_baseline = max(0.0, IMAC_AVG_TOTAL_WATTS - avg_cpu_watts)
-    return round(non_cpu_baseline + live_cpu_watts, 1)
+    screen_off_discount = (screen_idle_fraction or 0.0) * SCREEN_OFF_SAVINGS_WATTS
+    adjusted_baseline = max(0.0, non_cpu_baseline - screen_off_discount)
+    return round(adjusted_baseline + live_cpu_watts, 1)
 
 
 def estimate_energy_cost(avg_watts, label="cpu"):
@@ -510,6 +557,9 @@ def get_metrics_history(params):
         avg_power_row = conn.execute(
             "SELECT AVG(power_watts) FROM metrics WHERE ts >= ? AND power_watts IS NOT NULL", (since,)
         ).fetchone()
+        screen_idle_row = conn.execute(
+            "SELECT AVG(screen_idle) FROM metrics WHERE ts >= ? AND screen_idle IS NOT NULL", (since,)
+        ).fetchone()
         # Most recent single sample — a proxy for "right now" without calling take_reading()
         # again here, which would fight with the sampler thread and the live status poll
         # over the shared _last_reading delta state.
@@ -520,8 +570,10 @@ def get_metrics_history(params):
     except sqlite3.Error:
         rows = []
         avg_power_row = (None,)
+        screen_idle_row = (None,)
         last_power_row = (None,)
     avg_cpu_watts = avg_power_row[0]
+    screen_idle_fraction = screen_idle_row[0] if screen_idle_row else None
     live_cpu_watts = last_power_row[0] if last_power_row else None
     return {
         "range": range_key,
@@ -531,9 +583,11 @@ def get_metrics_history(params):
             "model": IMAC_MODEL_LABEL,
             "idle_watts_reference": IMAC_IDLE_TOTAL_WATTS,
             "max_watts_reference": IMAC_MAX_TOTAL_WATTS,
+            "screen_off_percent": round((screen_idle_fraction or 0.0) * 100, 1),
             "formula": TOTAL_ESTIMATE_FORMULA,
             "cost": estimate_energy_cost(
-                estimate_total_machine_watts(avg_cpu_watts, live_cpu_watts or avg_cpu_watts), label="total_estimado"
+                estimate_total_machine_watts(avg_cpu_watts, screen_idle_fraction, live_cpu_watts or avg_cpu_watts),
+                label="total_estimado",
             ),
         } if avg_cpu_watts is not None else None,
         "points": [

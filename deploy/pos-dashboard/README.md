@@ -96,3 +96,14 @@ total_estimado = base_no_cpu + CPU_medido_ahora
 ```
 Sigue siendo una estimación, no una medición — un enchufe inteligente entre
 la iMac y la pared es la única forma de tener el consumo total exacto.
+
+### Ajuste por pantalla apagada
+
+GNOME apaga la pantalla a los 900s de inactividad en este equipo
+(`org.gnome.desktop.session idle-delay`) — el sistema sigue corriendo, solo
+se apaga el panel. Como la referencia de fábrica (33W/58W) se midió con la
+pantalla encendida, el panel detecta el estado real vía `systemd-logind`
+(`loginctl show-session ... -p IdleHint`) y le resta al estimado un ahorro
+asumido de `SCREEN_OFF_SAVINGS_WATTS = 15W` (retroiluminación LED típica de
+21.5", no una cifra medida) proporcional al % de tiempo que la pantalla
+estuvo apagada en el rango seleccionado.

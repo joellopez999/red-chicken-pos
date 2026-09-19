@@ -416,7 +416,9 @@ function renderCostEstimate(c, total) {
     ${costBlock(total.cost, `Estimado de la máquina completa (${total.model})`)}
     <div class="cost-formula">
       Referencia de fábrica: <span class="cost-rate">${total.idle_watts_reference}W reposo / ${total.max_watts_reference}W máximo</span>
-      (medido, no de Apple) &nbsp;·&nbsp; Fórmula: ${total.formula}
+      (medido, no de Apple) &nbsp;·&nbsp;
+      Pantalla apagada: <span class="cost-rate">${total.screen_off_percent}%</span> del rango
+      &nbsp;·&nbsp; Fórmula: ${total.formula}
       <br>No es una medición real — solo un enchufe inteligente entre la iMac y la pared daría el consumo total exacto.
     </div>
   ` : '';
