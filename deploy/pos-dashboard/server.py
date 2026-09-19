@@ -2,15 +2,20 @@
 """Panel local de control/estado para Red Chicken POS. Solo stdlib, sin dependencias.
 
 Escucha en 127.0.0.1 (no expuesto a la red) y expone:
-  GET  /              -> dashboard HTML
-  GET  /api/status     -> JSON con estado de contenedores, tailscale, disco y negocio
-  POST /api/action     -> {"action": "start"|"stop"|"restart"} sobre el stack docker compose
+  GET  /                     -> dashboard HTML
+  GET  /api/status            -> JSON con estado de contenedores, tailscale, disco, negocio
+                                  y la lectura actual de CPU/RAM/energía (metrics)
+  GET  /api/metrics/history   -> historial de CPU/RAM/energía por rango (?range=1h|6h|24h|7d)
+  POST /api/action            -> {"action": "start"|"stop"|"restart"} sobre el stack docker compose
 """
 
 import json
 import re
 import shutil
+import sqlite3
 import subprocess
+import threading
+import time
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -279,6 +284,200 @@ def get_business_stats(params):
     }
 
 
+# ---------- System resource metrics (CPU / RAM / power) ----------
+# Stdlib-only: reads /proc directly instead of adding a psutil dependency, consistent
+# with this panel's "no external deps" design (it must keep working even with no
+# internet — e.g. exactly when you'd most want to check the machine's health).
+
+METRICS_DB_PATH = Path(__file__).parent / "metrics.db"
+RAPL_ENERGY_PATH = Path("/sys/class/powercap/intel-rapl:0/energy_uj")
+RAPL_MAX_RANGE_PATH = Path("/sys/class/powercap/intel-rapl:0/max_energy_range_uj")
+SAMPLE_INTERVAL_SECONDS = 60
+METRICS_RETENTION_DAYS = 30
+
+_rapl_max_range_uj = None
+if RAPL_MAX_RANGE_PATH.is_file():
+    try:
+        _rapl_max_range_uj = int(RAPL_MAX_RANGE_PATH.read_text().strip())
+    except (OSError, ValueError):
+        pass
+
+
+def read_cpu_jiffies():
+    """Total and idle jiffies from the aggregate 'cpu' line of /proc/stat."""
+    try:
+        with open("/proc/stat") as f:
+            parts = f.readline().split()
+        values = [int(v) for v in parts[1:]]
+        idle = values[3] + (values[4] if len(values) > 4 else 0)  # idle + iowait
+        return sum(values), idle
+    except (OSError, ValueError, IndexError):
+        return None, None
+
+
+def read_meminfo_kb():
+    """(total_kb, available_kb) from /proc/meminfo."""
+    total = avail = None
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    total = int(line.split()[1])
+                elif line.startswith("MemAvailable:"):
+                    avail = int(line.split()[1])
+                if total is not None and avail is not None:
+                    break
+    except (OSError, ValueError, IndexError):
+        pass
+    return total, avail
+
+
+def read_rapl_energy_uj():
+    """CPU package energy counter in microjoules, or None if unreadable (permissions
+    not yet set up, or non-Intel/no-RAPL hardware)."""
+    try:
+        return int(RAPL_ENERGY_PATH.read_text().strip())
+    except (OSError, ValueError):
+        return None
+
+
+_last_reading = {"t": None, "cpu_total": None, "cpu_idle": None, "energy_uj": None}
+_last_reading_lock = threading.Lock()
+
+
+def take_reading():
+    """Instantaneous host CPU%/RAM%/power reading, computed as a delta since the
+    previous call (from any caller — the live status poll and the history sampler
+    share this same state). Thread-safe; never raises."""
+    global _last_reading
+    with _last_reading_lock:
+        now = time.time()
+        cpu_total, cpu_idle = read_cpu_jiffies()
+        mem_total_kb, mem_avail_kb = read_meminfo_kb()
+        energy_uj = read_rapl_energy_uj()
+        prev = _last_reading
+
+        cpu_percent = None
+        power_watts = None
+        if prev["t"] is not None and (now - prev["t"]) > 0.5:
+            if cpu_total is not None and prev["cpu_total"] is not None:
+                d_total = cpu_total - prev["cpu_total"]
+                d_idle = cpu_idle - prev["cpu_idle"]
+                if d_total > 0:
+                    cpu_percent = round(max(0.0, min(100.0, (1 - d_idle / d_total) * 100)), 1)
+            if energy_uj is not None and prev["energy_uj"] is not None:
+                delta_uj = energy_uj - prev["energy_uj"]
+                if delta_uj < 0 and _rapl_max_range_uj:  # counter wrapped
+                    delta_uj += _rapl_max_range_uj
+                dt = now - prev["t"]
+                if delta_uj >= 0 and dt > 0:
+                    power_watts = round((delta_uj / 1_000_000) / dt, 1)
+
+        mem_percent = None
+        mem_used_mb = None
+        mem_total_mb = None
+        if mem_total_kb:
+            mem_total_mb = round(mem_total_kb / 1024)
+            if mem_avail_kb is not None:
+                mem_used_mb = round((mem_total_kb - mem_avail_kb) / 1024)
+                mem_percent = round((mem_total_kb - mem_avail_kb) / mem_total_kb * 100, 1)
+
+        _last_reading = {"t": now, "cpu_total": cpu_total, "cpu_idle": cpu_idle, "energy_uj": energy_uj}
+        return {
+            "ts": now,
+            "cpu_percent": cpu_percent,
+            "mem_percent": mem_percent,
+            "mem_used_mb": mem_used_mb,
+            "mem_total_mb": mem_total_mb,
+            "power_watts": power_watts,
+            # Reflects whether the RAPL counter is actually readable right now (permissions
+            # set up via the udev rule), not just whether the sysfs path exists.
+            "power_available": energy_uj is not None,
+        }
+
+
+def _metrics_db():
+    conn = sqlite3.connect(METRICS_DB_PATH)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS metrics ("
+        " ts INTEGER PRIMARY KEY,"
+        " cpu_percent REAL,"
+        " mem_percent REAL,"
+        " power_watts REAL"
+        ")"
+    )
+    return conn
+
+
+def store_reading(reading):
+    if reading["cpu_percent"] is None and reading["mem_percent"] is None:
+        return  # nothing usable yet (first sample right after startup)
+    try:
+        conn = _metrics_db()
+        with conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO metrics (ts, cpu_percent, mem_percent, power_watts) VALUES (?, ?, ?, ?)",
+                (int(reading["ts"]), reading["cpu_percent"], reading["mem_percent"], reading["power_watts"]),
+            )
+            cutoff = int(time.time()) - METRICS_RETENTION_DAYS * 86400
+            conn.execute("DELETE FROM metrics WHERE ts < ?", (cutoff,))
+        conn.close()
+    except sqlite3.Error:
+        pass  # a lost history sample must never take down the sampler thread
+
+
+_RANGE_BUCKETS = {
+    "1h": (3600, 60),
+    "6h": (6 * 3600, 300),
+    "24h": (24 * 3600, 900),
+    "7d": (7 * 24 * 3600, 7200),
+}
+
+
+def get_metrics_history(params):
+    range_key = params.get("range", ["6h"])[0]
+    window_seconds, bucket_seconds = _RANGE_BUCKETS.get(range_key, _RANGE_BUCKETS["6h"])
+    since = int(time.time()) - window_seconds
+    try:
+        conn = _metrics_db()
+        cur = conn.execute(
+            "SELECT (ts / ?) * ? AS bucket, AVG(cpu_percent), AVG(mem_percent), AVG(power_watts) "
+            "FROM metrics WHERE ts >= ? GROUP BY bucket ORDER BY bucket",
+            (bucket_seconds, bucket_seconds, since),
+        )
+        rows = cur.fetchall()
+        conn.close()
+    except sqlite3.Error:
+        rows = []
+    return {
+        "range": range_key,
+        "power_available": read_rapl_energy_uj() is not None,
+        "points": [
+            {
+                "ts": r[0],
+                "cpu_percent": round(r[1], 1) if r[1] is not None else None,
+                "mem_percent": round(r[2], 1) if r[2] is not None else None,
+                "power_watts": round(r[3], 1) if r[3] is not None else None,
+            }
+            for r in rows
+        ],
+    }
+
+
+def start_metrics_sampler():
+    take_reading()  # prime _last_reading so the first stored sample already has a delta
+
+    def loop():
+        while True:
+            time.sleep(SAMPLE_INTERVAL_SECONDS)
+            try:
+                store_reading(take_reading())
+            except Exception:
+                pass  # never let a sampling hiccup kill the background thread
+
+    threading.Thread(target=loop, daemon=True).start()
+
+
 def http_reachable(url, timeout=1.5):
     try:
         with urllib.request.urlopen(url, timeout=timeout) as r:
@@ -299,6 +498,7 @@ def build_status():
         "disk": get_disk(),
         "business": get_business() if "db" in running else {"error": "db_down"},
         "frontend_port": FRONTEND_PORT,
+        "metrics": take_reading(),
     }
 
 
@@ -346,6 +546,10 @@ class Handler(BaseHTTPRequestHandler):
             parsed = urllib.parse.urlsplit(self.path)
             params = urllib.parse.parse_qs(parsed.query)
             self._send_json(get_business_stats(params))
+        elif self.path.startswith("/api/metrics/history"):
+            parsed = urllib.parse.urlsplit(self.path)
+            params = urllib.parse.parse_qs(parsed.query)
+            self._send_json(get_metrics_history(params))
         else:
             self.send_response(404)
             self.end_headers()
@@ -366,6 +570,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    start_metrics_sampler()
     server = ThreadingHTTPServer(("127.0.0.1", DASHBOARD_PORT), Handler)
     print(f"Panel Red Chicken POS en http://127.0.0.1:{DASHBOARD_PORT}")
     server.serve_forever()

@@ -75,6 +75,23 @@
   }
   .stats-summary .stat b { display: block; font-size: 20px; color: var(--text); }
   .stats-summary .stat span { color: var(--muted); font-size: 12px; }
+  .metrics-now { display: flex; flex-wrap: wrap; gap: 24px; margin-bottom: 16px; }
+  .metrics-now .stat b { display: block; font-size: 26px; color: var(--text); }
+  .metrics-now .stat span { color: var(--muted); font-size: 12px; }
+  .metrics-now .stat.warn b { color: var(--yellow); }
+  .range-picker { display: flex; gap: 6px; margin-bottom: 14px; }
+  .range-picker button {
+    background: var(--card); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 12px; font-size: 12px; font-weight: 600;
+  }
+  .range-picker button.active { background: var(--accent); color: white; border-color: var(--accent); }
+  .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .chart-box { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .chart-box h3 { margin: 0 0 6px; font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+  .chart-box .spark { width: 100%; height: 90px; display: block; }
+  .chart-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .chart-meta .chart-last { color: var(--text); font-weight: 700; font-size: 13px; }
+  .chart-empty { height: 90px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; }
 </style>
 </head>
 <body>
@@ -116,6 +133,22 @@
     <div class="card">
       <h2>Negocio (hoy)</h2>
       <div id="businessBody">-</div>
+    </div>
+
+    <div class="card" style="grid-column: 1 / -1;">
+      <h2>Recursos del sistema (CPU, RAM, energía)</h2>
+      <div class="metrics-now" id="metricsNow">-</div>
+      <div class="range-picker" id="metricsRangePicker">
+        <button data-range="1h" onclick="loadMetricsHistory('1h')">Última hora</button>
+        <button data-range="6h" onclick="loadMetricsHistory('6h')" class="active">Últimas 6h</button>
+        <button data-range="24h" onclick="loadMetricsHistory('24h')">Últimas 24h</button>
+        <button data-range="7d" onclick="loadMetricsHistory('7d')">Últimos 7 días</button>
+      </div>
+      <div class="charts-grid" id="metricsCharts">
+        <div class="chart-box"><h3>CPU %</h3><div class="chart-empty">Cargando...</div></div>
+        <div class="chart-box"><h3>RAM %</h3><div class="chart-empty">Cargando...</div></div>
+        <div class="chart-box"><h3>Energía (W)</h3><div class="chart-empty">Cargando...</div></div>
+      </div>
     </div>
 
     <div class="card" style="grid-column: 1 / -1;">
@@ -263,6 +296,88 @@ async function refresh() {
     <div class="kv"><span>Órdenes hoy</span><span class="v">${b.orders_today ?? '-'}</span></div>
     <div class="kv"><span>Órdenes abiertas</span><span class="v">${b.open_orders ?? '-'}</span></div>
     <div class="kv"><span>Ventas hoy</span><span class="v">$${b.revenue_today ?? '0.00'}</span></div>
+  `;
+
+  renderMetricsNow(data.metrics);
+}
+
+function renderMetricsNow(m) {
+  const el = document.getElementById('metricsNow');
+  if (!m) { el.innerHTML = '-'; return; }
+  const cpu = m.cpu_percent != null ? `${m.cpu_percent}%` : '—';
+  const mem = m.mem_percent != null ? `${m.mem_percent}%` : '—';
+  const memDetail = (m.mem_used_mb != null && m.mem_total_mb != null)
+    ? `${(m.mem_used_mb / 1024).toFixed(1)} / ${(m.mem_total_mb / 1024).toFixed(1)} GB`
+    : 'RAM';
+  const power = m.power_watts != null ? `${m.power_watts} W` : (m.power_available ? '—' : 'No disponible');
+  el.innerHTML = `
+    <div class="stat"><b>${cpu}</b><span>CPU (todo el sistema)</span></div>
+    <div class="stat"><b>${mem}</b><span>${memDetail}</span></div>
+    <div class="stat${!m.power_available ? ' warn' : ''}"><b>${power}</b><span>Energía CPU (Intel RAPL)</span></div>
+  `;
+}
+
+function fmtChartTime(ts) {
+  return new Date(ts * 1000).toLocaleString('es-EC', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function buildSparkline(points, key, opts) {
+  opts = opts || {};
+  const width = 600, height = 90, pad = 8;
+  const vals = [];
+  points.forEach(p => { if (p[key] != null) vals.push(p[key]); });
+  if (!vals.length) return '<div class="chart-empty">Sin datos todavía para este rango</div>';
+  const minY = Math.min(...vals), maxY = Math.max(...vals);
+  const rangeY = (maxY - minY) || 1;
+  const stepX = points.length > 1 ? width / (points.length - 1) : width;
+  let path = '';
+  let drawing = false;
+  points.forEach((p, i) => {
+    const v = p[key];
+    if (v == null) { drawing = false; return; }
+    const x = i * stepX;
+    const y = height - pad - ((v - minY) / rangeY) * (height - 2 * pad);
+    path += (drawing ? 'L' : 'M') + x.toFixed(1) + ',' + y.toFixed(1) + ' ';
+    drawing = true;
+  });
+  const last = vals[vals.length - 1];
+  const unit = opts.unit || '';
+  return `
+    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" class="spark">
+      <path d="${path}" fill="none" stroke="${opts.color || '#b91c1c'}" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    </svg>
+    <div class="chart-meta">
+      <span>min ${minY.toFixed(1)}${unit}</span>
+      <span class="chart-last">${last.toFixed(1)}${unit}</span>
+      <span>máx ${maxY.toFixed(1)}${unit}</span>
+    </div>
+  `;
+}
+
+let currentMetricsRange = '6h';
+
+async function loadMetricsHistory(range) {
+  if (range) currentMetricsRange = range;
+  document.querySelectorAll('#metricsRangePicker button').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.range === currentMetricsRange);
+  });
+  const container = document.getElementById('metricsCharts');
+  let data;
+  try {
+    const res = await fetch('/api/metrics/history?range=' + currentMetricsRange);
+    data = await res.json();
+  } catch (e) {
+    container.innerHTML = '<div class="chart-empty">No se pudo cargar el historial.</div>';
+    return;
+  }
+  const points = data.points || [];
+  const powerNote = data.power_available
+    ? ''
+    : '<div class="chart-empty">Energía no disponible (falta el permiso del sensor RAPL)</div>';
+  container.innerHTML = `
+    <div class="chart-box"><h3>CPU %</h3>${buildSparkline(points, 'cpu_percent', { color: '#b91c1c', unit: '%' })}</div>
+    <div class="chart-box"><h3>RAM %</h3>${buildSparkline(points, 'mem_percent', { color: '#2563eb', unit: '%' })}</div>
+    <div class="chart-box"><h3>Energía (W)</h3>${data.power_available ? buildSparkline(points, 'power_watts', { color: '#d97706', unit: 'W' }) : powerNote}</div>
   `;
 }
 
@@ -412,7 +527,9 @@ async function loadBusinessStats() {
 refresh();
 loadStaffLog();
 clearBusinessStatsFilters();
+loadMetricsHistory('6h');
 setInterval(refresh, 5000);
+setInterval(() => loadMetricsHistory(), 60000);
 </script>
 </body>
 </html>

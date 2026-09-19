@@ -5,10 +5,11 @@ dependencias externas (solo stdlib de Python). Escucha en `127.0.0.1:8090`,
 no está expuesto a la red ni a Tailscale Funnel.
 
 Muestra: estado de los contenedores Docker, acceso Tailscale, disco,
-estadísticas del negocio (con filtros por fecha y producto), y un log de
-actuaciones del personal y errores del backend (con filtros por fecha, tipo
-de acción y "solo errores"). Incluye botones para encender/apagar/reiniciar
-el stack (`docker compose`).
+recursos del sistema (CPU/RAM/energía, en vivo e histórico por rango de
+1h/6h/24h/7 días), estadísticas del negocio (con filtros por fecha y
+producto), y un log de actuaciones del personal y errores del backend (con
+filtros por fecha, tipo de acción y "solo errores"). Incluye botones para
+encender/apagar/reiniciar el stack (`docker compose`).
 
 ## Instalación
 
@@ -38,3 +39,26 @@ también reemplaza HAProxy por `haproxy.prod.cfg` con certificados de
 certbot para los puertos 80/443, pensado para un dominio público propio, no
 para este esquema con Tailscale Funnel. Ver el comentario al inicio de
 `docker-compose.front-prod.yml` para más detalle.
+
+## Recursos del sistema: CPU, RAM y energía
+
+CPU y RAM se leen directo de `/proc` (sin dependencias). El historial se
+guarda en `metrics.db` (SQLite, junto a `server.py`, no se sube a git),
+muestreado cada 60s en un hilo de fondo, con 30 días de retención.
+
+**Energía**: usa el contador de hardware Intel RAPL (`/sys/class/powercap/`),
+que mide el consumo real del procesador — **no** el consumo total de la
+máquina (pantalla, disco, ventiladores quedan fuera). Solo funciona en CPUs
+Intel con soporte RAPL. El archivo del contador es de solo lectura para
+root por defecto; para habilitarlo:
+
+```sh
+sudo tee /etc/udev/rules.d/99-rapl-readable.rules > /dev/null <<'EOF'
+SUBSYSTEM=="powercap", KERNEL=="intel-rapl:*", RUN+="/bin/chmod a+r /sys%p/energy_uj"
+EOF
+sudo udevadm control --reload-rules
+sudo udevadm trigger -s powercap
+```
+
+Sin este paso, el panel sigue funcionando normalmente — la tarjeta de
+energía simplemente muestra "No disponible" en vez de vatios.
