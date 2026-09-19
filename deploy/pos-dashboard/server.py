@@ -433,6 +433,40 @@ _RANGE_BUCKETS = {
     "7d": (7 * 24 * 3600, 7200),
 }
 
+# Tarifa eléctrica residencial promedio en Ecuador para 2026, según ARCONEL (subsidiada;
+# el costo real de provisión ronda $0.1061/kWh, pero el usuario residencial paga en
+# promedio esto). Variable a propósito: si ARCONEL ajusta la tarifa, se actualiza solo
+# aquí y el estimado de costo en todo el panel se recalcula solo.
+# Fuente: https://www.eluniverso.com/noticias/economia/tarifa-electrica-ecuador-2026-arconel-servicio-basico-nota/
+ELECTRICITY_PRICE_USD_PER_KWH = 0.10
+
+# Fórmula del estimado (para que quede visible/documentada, no escondida en el cálculo):
+#   kWh/día = (potencia_promedio_W / 1000) * 24
+#   costo_día = kWh/día * ELECTRICITY_PRICE_USD_PER_KWH
+#   costo_mes = costo_día * 30 ; costo_año = costo_día * 365
+ENERGY_COST_FORMULA = (
+    "kWh/día = (W promedio ÷ 1000) × 24h  ·  "
+    "costo = kWh/día × tarifa ($/kWh)  ·  mes = día×30, año = día×365"
+)
+
+
+def estimate_energy_cost(avg_watts):
+    """USD/día,mes,año for a given average power draw, at ELECTRICITY_PRICE_USD_PER_KWH.
+    Only covers what RAPL measures (CPU package) — see README for that caveat."""
+    if avg_watts is None:
+        return None
+    kwh_per_day = (avg_watts / 1000) * 24
+    cost_day = kwh_per_day * ELECTRICITY_PRICE_USD_PER_KWH
+    return {
+        "avg_watts": round(avg_watts, 1),
+        "kwh_per_day": round(kwh_per_day, 3),
+        "cost_usd_day": round(cost_day, 3),
+        "cost_usd_month": round(cost_day * 30, 2),
+        "cost_usd_year": round(cost_day * 365, 2),
+        "price_usd_per_kwh": ELECTRICITY_PRICE_USD_PER_KWH,
+        "formula": ENERGY_COST_FORMULA,
+    }
+
 
 def get_metrics_history(params):
     range_key = params.get("range", ["6h"])[0]
@@ -446,12 +480,17 @@ def get_metrics_history(params):
             (bucket_seconds, bucket_seconds, since),
         )
         rows = cur.fetchall()
+        avg_power_row = conn.execute(
+            "SELECT AVG(power_watts) FROM metrics WHERE ts >= ? AND power_watts IS NOT NULL", (since,)
+        ).fetchone()
         conn.close()
     except sqlite3.Error:
         rows = []
+        avg_power_row = (None,)
     return {
         "range": range_key,
         "power_available": read_rapl_energy_uj() is not None,
+        "cost_estimate": estimate_energy_cost(avg_power_row[0]),
         "points": [
             {
                 "ts": r[0],

@@ -62,3 +62,20 @@ sudo udevadm trigger -s powercap
 
 Sin este paso, el panel sigue funcionando normalmente — la tarjeta de
 energía simplemente muestra "No disponible" en vez de vatios.
+
+## Estimado de costo eléctrico
+
+La tarifa usada es una variable explícita en `server.py`
+(`ELECTRICITY_PRICE_USD_PER_KWH`), con la fórmula documentada al lado en
+`ENERGY_COST_FORMULA` — ambas se devuelven también en la respuesta de
+`/api/metrics/history` y se muestran en el panel, para que la tarifa y el
+cálculo nunca queden escondidos.
+
+Valor actual: **$0.10/kWh** — tarifa residencial promedio de Ecuador para
+2026 (subsidiada; el costo real de provisión es ~$0.1061/kWh), según
+ARCONEL. [Fuente](https://www.eluniverso.com/noticias/economia/tarifa-electrica-ecuador-2026-arconel-servicio-basico-nota/).
+Si ARCONEL ajusta la tarifa, se actualiza solo esa constante.
+
+Importante: el estimado usa el consumo del procesador (RAPL), no el de la
+máquina completa — es una cota inferior real, no el gasto eléctrico total
+del equipo.
