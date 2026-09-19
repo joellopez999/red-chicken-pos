@@ -1,0 +1,9 @@
+# Plantilla — copiar a /etc/cloudflared/config.yml con el ID/ruta reales.
+# El archivo real vive en /etc/cloudflared/ (no en este repo) porque
+# credentials-file apunta a un secreto real (la clave privada del túnel).
+tunnel: <TUNNEL_ID>
+credentials-file: /etc/cloudflared/<TUNNEL_ID>.json
+ingress:
+  - hostname: pos.redchickenec.com
+    service: http://localhost:8080
+  - service: http_status:404
