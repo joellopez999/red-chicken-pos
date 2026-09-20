@@ -38,6 +38,9 @@ services:
       - SAAS_PLAN_CURRENCY=${SAAS_PLAN_CURRENCY:-eur}
       - SAAS_STRIPE_PRICE_ID=${SAAS_STRIPE_PRICE_ID:-}
       - SAAS_STRIPE_WEBHOOK_SECRET=${SAAS_STRIPE_WEBHOOK_SECRET:-}
+      - PHONE_ORDER_AI_API_KEY=${PHONE_ORDER_AI_API_KEY:-}
+      - PHONE_ORDER_AI_API_URL=${PHONE_ORDER_AI_API_URL:-https://api.openai.com/v1/chat/completions}
+      - PHONE_ORDER_AI_MODEL=${PHONE_ORDER_AI_MODEL:-gpt-4o-mini}
     volumes:
       - ./back:/app
       - ./back/uploads:/app/uploads

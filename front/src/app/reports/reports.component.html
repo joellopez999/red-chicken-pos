@@ -71,6 +71,69 @@
     </div>
   </div>
 
+  <div class="filter-tabs">
+    <button type="button" class="filter-tab" [class.active]="reportsView() === 'summary'" (click)="reportsView.set('summary')">
+      {{ 'REPORTS.TAB_SUMMARY' | translate }}
+    </button>
+    @if (canManageExpenses()) {
+      <button type="button" class="filter-tab" [class.active]="reportsView() === 'expenses'" (click)="reportsView.set('expenses')">
+        {{ 'REPORTS.TAB_EXPENSES' | translate }}
+        @if (expenses().length > 0) {
+          <span class="tab-badge">{{ expenses().length }}</span>
+        }
+      </button>
+    }
+  </div>
+
+  @if (reportsView() === 'expenses') {
+    <section class="report-section" data-testid="reports-expenses">
+      <div class="section-header">
+        <h2>{{ 'REPORTS.EXPENSES_TITLE' | translate }}</h2>
+        <button type="button" class="btn btn-primary" (click)="openExpenseModal()">
+          {{ 'REPORTS.EXPENSE_ADD' | translate }}
+        </button>
+      </div>
+      @if (expensesLoading()) {
+        <p class="muted">{{ 'REPORTS.LOADING' | translate }}</p>
+      } @else if (expenses().length === 0) {
+        <p class="muted">{{ 'REPORTS.EXPENSES_EMPTY' | translate }}</p>
+      } @else {
+        <div class="summary-cards">
+          <div class="summary-card cost">
+            <span class="card-label">{{ 'REPORTS.EXPENSES_TOTAL' | translate }}</span>
+            <span class="card-value">{{ formatCurrency(expensesTotalCents()) }}</span>
+          </div>
+        </div>
+        <table class="expenses-table">
+          <thead>
+            <tr>
+              <th>{{ 'REPORTS.EXPENSE_DATE' | translate }}</th>
+              <th>{{ 'REPORTS.EXPENSE_CATEGORY' | translate }}</th>
+              <th>{{ 'REPORTS.EXPENSE_DESCRIPTION' | translate }}</th>
+              <th>{{ 'REPORTS.EXPENSE_AMOUNT' | translate }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (expense of expenses(); track expense.id) {
+              <tr>
+                <td>{{ expense.expense_date }}</td>
+                <td>{{ expense.category }}</td>
+                <td>{{ expense.description || '—' }}</td>
+                <td>{{ formatCurrency(expense.amount_cents) }}</td>
+                <td>
+                  <button type="button" class="btn-icon-delete" (click)="deleteExpenseRow(expense)" [attr.aria-label]="'REPORTS.EXPENSE_DELETE' | translate">✕</button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </section>
+  }
+
+  @if (reportsView() === 'summary') {
+
   @if (error()) {
     <div class="error-banner">{{ error() }}</div>
   }
@@ -761,7 +824,50 @@
       }
     </section>
   }
+
+  }
+
   </div>
+  }
+
+  @if (expenseModalOpen()) {
+    <div class="reports-modal-overlay" role="presentation">
+      <div class="reports-modal-panel" role="dialog" aria-modal="true" [attr.aria-label]="'REPORTS.EXPENSE_ADD' | translate" (click)="$event.stopPropagation()">
+        <h3 class="reports-modal-title">{{ 'REPORTS.EXPENSE_ADD' | translate }}</h3>
+        @if (expenseError()) {
+          <div class="error-banner reports-modal-error">{{ expenseError() }}</div>
+        }
+        <div class="reports-modal-field">
+          <label for="expense-category">{{ 'REPORTS.EXPENSE_CATEGORY' | translate }}</label>
+          <select id="expense-category" [(ngModel)]="expenseFormCategory">
+            <option value="" disabled>{{ 'REPORTS.EXPENSE_CATEGORY_PLACEHOLDER' | translate }}</option>
+            @for (cat of expenseCategories(); track cat) {
+              <option [value]="cat">{{ cat }}</option>
+            }
+          </select>
+        </div>
+        <div class="reports-modal-field">
+          <label for="expense-amount">{{ 'REPORTS.EXPENSE_AMOUNT' | translate }}</label>
+          <input id="expense-amount" type="text" inputmode="decimal" [(ngModel)]="expenseFormAmount" placeholder="0.00" />
+        </div>
+        <div class="reports-modal-field">
+          <label for="expense-date">{{ 'REPORTS.EXPENSE_DATE' | translate }}</label>
+          <input id="expense-date" type="date" [ngModel]="expenseFormDate()" (ngModelChange)="expenseFormDate.set($event)" />
+        </div>
+        <div class="reports-modal-field">
+          <label for="expense-description">{{ 'REPORTS.EXPENSE_DESCRIPTION' | translate }}</label>
+          <textarea id="expense-description" rows="2" [(ngModel)]="expenseFormDescription"></textarea>
+        </div>
+        <div class="reports-modal-actions">
+          <button type="button" class="btn btn-secondary" (click)="closeExpenseModal()" [disabled]="expenseSaving()">
+            {{ 'COMMON.CANCEL' | translate }}
+          </button>
+          <button type="button" class="btn btn-primary" (click)="submitExpense()" [disabled]="expenseSaving()">
+            {{ expenseSaving() ? ('COMMON.SAVING' | translate) : ('REPORTS.EXPENSE_SAVE' | translate) }}
+          </button>
+        </div>
+      </div>
+    </div>
   }
 
   @if (workSessionAdjustOpen()) {

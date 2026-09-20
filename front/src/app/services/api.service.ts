@@ -1447,6 +1447,57 @@ export interface FiscalInvoicePublic {
 }
 
 /** Ecuador SRI comprobante electrónico status — estado: PPR|RECIBIDA|DEVUELTA|AUT|NAT. */
+export interface AiPhoneOrderItem {
+  product_id: number;
+  product_name: string;
+  quantity: number;
+  price_cents: number;
+  notes?: string | null;
+}
+
+export interface AiPhoneOrderTranscriptEntry {
+  role: string;
+  content: string | null;
+}
+
+export interface Expense {
+  id: number;
+  category: string;
+  amount_cents: number;
+  description: string | null;
+  expense_date: string;
+  created_by_user_id: number | null;
+  created_at: string | null;
+}
+
+export interface ExpenseCreate {
+  category: string;
+  amount_cents: number;
+  description?: string | null;
+  expense_date: string;
+}
+
+export interface AiPhoneOrderDraft {
+  id: number;
+  phone_label: string;
+  status: 'in_progress' | 'pending_review' | 'accepted' | 'rejected';
+  items: AiPhoneOrderItem[];
+  customer_note: string | null;
+  transcript: AiPhoneOrderTranscriptEntry[];
+  created_at: string | null;
+  updated_at: string | null;
+  resulting_order_id: number | null;
+  total_cents: number;
+}
+
+export interface AiPhoneOrderTurnResult {
+  reply: string;
+  items: AiPhoneOrderItem[];
+  customer_note: string | null;
+  status: string;
+  finished: boolean;
+}
+
 export interface SriComprobantePublic {
   id: number;
   order_id: number;
@@ -3194,6 +3245,46 @@ export class ApiService {
     return this.http.post<SriComprobantePublic>(`${this.apiUrl}/orders/${orderId}/sri-invoice/send-email`, { email: email || null });
   }
 
+  getExpenseCategories(): Observable<string[]> {
+    return this.http.get<string[]>(`${this.apiUrl}/expenses/categories`);
+  }
+
+  listExpenses(fromDate?: string, toDate?: string): Observable<Expense[]> {
+    const params: Record<string, string> = {};
+    if (fromDate) params['from_date'] = fromDate;
+    if (toDate) params['to_date'] = toDate;
+    return this.http.get<Expense[]>(`${this.apiUrl}/expenses`, { params });
+  }
+
+  createExpense(body: ExpenseCreate): Observable<Expense> {
+    return this.http.post<Expense>(`${this.apiUrl}/expenses`, body);
+  }
+
+  deleteExpense(expenseId: number): Observable<{ status: string; id: number }> {
+    return this.http.delete<{ status: string; id: number }>(`${this.apiUrl}/expenses/${expenseId}`);
+  }
+
+  listAiPhoneOrders(status?: string): Observable<AiPhoneOrderDraft[]> {
+    const params = status ? { params: { status } } : {};
+    return this.http.get<AiPhoneOrderDraft[]>(`${this.apiUrl}/ai-phone-orders`, params);
+  }
+
+  createAiPhoneOrder(phoneLabel: string): Observable<AiPhoneOrderDraft> {
+    return this.http.post<AiPhoneOrderDraft>(`${this.apiUrl}/ai-phone-orders`, { phone_label: phoneLabel });
+  }
+
+  advanceAiPhoneOrderTurn(draftId: number, message: string): Observable<AiPhoneOrderTurnResult> {
+    return this.http.post<AiPhoneOrderTurnResult>(`${this.apiUrl}/ai-phone-orders/${draftId}/turn`, { message });
+  }
+
+  acceptAiPhoneOrder(draftId: number): Observable<{ order_id: number; draft: AiPhoneOrderDraft }> {
+    return this.http.post<{ order_id: number; draft: AiPhoneOrderDraft }>(`${this.apiUrl}/ai-phone-orders/${draftId}/accept`, {});
+  }
+
+  rejectAiPhoneOrder(draftId: number): Observable<AiPhoneOrderDraft> {
+    return this.http.post<AiPhoneOrderDraft>(`${this.apiUrl}/ai-phone-orders/${draftId}/reject`, {});
+  }
+
   uploadSriCertificate(file: File, password: string): Observable<{ status: string; uploaded_at: string }> {
     const form = new FormData();
     form.append('file', file);
@@ -4127,8 +4218,12 @@ export class ApiService {
     this.getWsToken().subscribe({
       next: (res) => { if (user.tenant_id != null) this.connectWebSocketWithToken(user.tenant_id, res.access_token); },
       error: (err) => {
-        console.warn('Could not get WebSocket token, connection may fail:', err?.status ?? err);
-        if (user.tenant_id != null) this.connectWebSocketWithToken(user.tenant_id, null);
+        // Never connect without a token: the ws-bridge always rejects that with code 1008,
+        // and 1008 is the one close code the reconnect logic below treats as permanent —
+        // so a single transient failure here used to kill live updates for the rest of the
+        // page's life (e.g. a long-running kitchen display screen). Retry instead.
+        console.warn('Could not get WebSocket token, will retry in 3s:', err?.status ?? err);
+        setTimeout(() => this.connectWebSocket(), 3000);
       },
     });
   }

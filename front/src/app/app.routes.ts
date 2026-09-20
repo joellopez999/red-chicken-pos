@@ -12,17 +12,18 @@ import { tablesCanvasCanDeactivate } from './tables/tables-canvas-deactivate.gua
 
 export const routes: Routes = [
   // Public routes
-  { path: '', loadComponent: () => import('./landing/landing.component').then(m => m.LandingComponent) },
-  // Vendor marketing pages hidden for this deployment (redirect to home)
-  { path: 'features', redirectTo: '', pathMatch: 'full' },
-  { path: 'pricing', redirectTo: '', pathMatch: 'full' },
-  { path: 'about', redirectTo: '', pathMatch: 'full' },
+  // Marketing landing page hidden for this deployment — straight to login instead.
+  { path: '', redirectTo: 'login', pathMatch: 'full' },
+  // Vendor marketing pages hidden for this deployment (redirect to login)
+  { path: 'features', redirectTo: 'login', pathMatch: 'full' },
+  { path: 'pricing', redirectTo: 'login', pathMatch: 'full' },
+  { path: 'about', redirectTo: 'login', pathMatch: 'full' },
   { path: 'login', loadComponent: () => import('./auth/login.component').then(m => m.LoginComponent) },
   { path: 'register', loadComponent: () => import('./auth/register.component').then(m => m.RegisterComponent) },
   { path: 'signup', loadComponent: () => import('./auth/register.component').then(m => m.RegisterComponent) },
-  // Vendor legal pages hidden for this deployment (redirect to home)
-  { path: 'terms', redirectTo: '', pathMatch: 'full' },
-  { path: 'privacy', redirectTo: '', pathMatch: 'full' },
+  // Vendor legal pages hidden for this deployment (redirect to login)
+  { path: 'terms', redirectTo: 'login', pathMatch: 'full' },
+  { path: 'privacy', redirectTo: 'login', pathMatch: 'full' },
   { path: 'forgot-password', loadComponent: () => import('./auth/forgot-password.component').then(m => m.ForgotPasswordComponent) },
   { path: 'reset-password', loadComponent: () => import('./auth/reset-password.component').then(m => m.ResetPasswordComponent) },
   {
@@ -129,5 +130,5 @@ export const routes: Routes = [
   { path: 'working-plan', pathMatch: 'full', canActivate: [authGuard, uiModuleGuard('working_plan'), scheduleGuard, workingPlanViewRedirectGuard], loadComponent: () => import('./working-plan/working-plan.component').then(m => m.WorkingPlanComponent) },
   { path: 'working-plan/:view', canActivate: [authGuard, uiModuleGuard('working_plan'), scheduleGuard], loadComponent: () => import('./working-plan/working-plan.component').then(m => m.WorkingPlanComponent) },
 
-  { path: '**', redirectTo: '' }
+  { path: '**', redirectTo: 'login' }
 ];

@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prueba: Teléfono IA — Explicar menú</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #ffffff; --text: #1c1e21; --muted: #6b7280;
+    --border: #e5e7eb; --green: #16a34a; --red: #dc2626; --yellow: #d97706;
+    --primary: #D35233;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    max-width: 560px; margin-left: auto; margin-right: auto;
+  }
+  h1 { font-size: 1.25rem; margin: 0 0 4px; }
+  p.sub { color: var(--muted); margin: 0 0 20px; font-size: 0.875rem; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; margin-bottom: 16px;
+  }
+  label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+  input[type=text], input[type=password] {
+    width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.9rem;
+  }
+  button {
+    border: none; border-radius: 6px; padding: 10px 16px; font-size: 0.9rem; font-weight: 600;
+    color: #fff; cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary { background: var(--primary); }
+  .btn-row { display: flex; gap: 8px; margin-top: 10px; }
+  #callBtn { width: 100%; padding: 14px; font-size: 1rem; background: var(--green); }
+  #callBtn.hangup { background: var(--red); }
+  #status { font-size: 0.8rem; color: var(--muted); margin-top: 8px; text-align: center; }
+  #transcript {
+    display: flex; flex-direction: column; gap: 10px; max-height: 50vh; overflow-y: auto;
+    margin-bottom: 12px;
+  }
+  .msg { padding: 10px 12px; border-radius: 10px; font-size: 0.9rem; max-width: 85%; line-height: 1.4; }
+  .msg.assistant { background: #f1f5f9; align-self: flex-start; }
+  .msg.user { background: var(--primary); color: #fff; align-self: flex-end; }
+  .msg.system { background: #fef3c7; color: #92400e; align-self: center; font-size: 0.8rem; text-align: center; }
+  #turnRow { display: flex; gap: 8px; }
+  #turnRow input { flex: 1; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+  <h1>📞 Prueba: Teléfono IA — Explicar menú</h1>
+  <p class="sub">Simula que alguien descuelga uno de los teléfonos del local. No crea pedidos — solo responde preguntas del menú, máximo 2 minutos / 6 turnos por llamada.</p>
+
+  <div class="card" id="tokenCard">
+    <label for="tokenInput">Token del teléfono</label>
+    <input type="password" id="tokenInput" placeholder="Pega aquí el token del dispositivo" autocomplete="off" />
+    <div class="btn-row">
+      <button class="btn-primary" id="showTokenBtn" type="button" style="background:#6b7280;">Mostrar/ocultar</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <button id="callBtn">📞 Descolgar (iniciar llamada)</button>
+    <div id="status">Sin llamada activa</div>
+  </div>
+
+  <div class="card hidden" id="chatCard">
+    <div id="transcript"></div>
+    <div id="turnRow">
+      <input type="text" id="turnInput" placeholder="Escribe lo que dice el cliente…" />
+      <button class="btn-primary" id="sendBtn">Enviar</button>
+    </div>
+  </div>
+
+<script>
+const API_BASE = "https://pos.redchickenec.com/api";
+
+const tokenInput = document.getElementById("tokenInput");
+const showTokenBtn = document.getElementById("showTokenBtn");
+const callBtn = document.getElementById("callBtn");
+const statusEl = document.getElementById("status");
+const chatCard = document.getElementById("chatCard");
+const transcriptEl = document.getElementById("transcript");
+const turnInput = document.getElementById("turnInput");
+const sendBtn = document.getElementById("sendBtn");
+
+let sessionId = null;
+let callActive = false;
+
+showTokenBtn.addEventListener("click", () => {
+  tokenInput.type = tokenInput.type === "password" ? "text" : "password";
+});
+
+function addMessage(role, text) {
+  const div = document.createElement("div");
+  div.className = "msg " + role;
+  div.textContent = text;
+  transcriptEl.appendChild(div);
+  transcriptEl.scrollTop = transcriptEl.scrollHeight;
+}
+
+function setBusy(busy) {
+  sendBtn.disabled = busy;
+  turnInput.disabled = busy;
+}
+
+async function startCall() {
+  const token = tokenInput.value.trim();
+  if (!token) {
+    statusEl.textContent = "Falta el token del teléfono.";
+    return;
+  }
+  callBtn.disabled = true;
+  statusEl.textContent = "Marcando…";
+  try {
+    const res = await fetch(`${API_BASE}/public/ai-phone-menu/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Error ${res.status}`);
+    }
+    const data = await res.json();
+    sessionId = data.session_id;
+    callActive = true;
+    transcriptEl.innerHTML = "";
+    addMessage("assistant", data.greeting);
+    chatCard.classList.remove("hidden");
+    callBtn.textContent = "📴 Colgar";
+    callBtn.classList.add("hangup");
+    statusEl.textContent = "Llamada activa — sesión #" + sessionId;
+  } catch (e) {
+    statusEl.textContent = "No se pudo iniciar: " + e.message;
+  } finally {
+    callBtn.disabled = false;
+  }
+}
+
+function endCallUi(reason) {
+  callActive = false;
+  callBtn.textContent = "📞 Descolgar (iniciar llamada)";
+  callBtn.classList.remove("hangup");
+  statusEl.textContent = reason || "Llamada finalizada";
+}
+
+async function sendTurn() {
+  const message = turnInput.value.trim();
+  const token = tokenInput.value.trim();
+  if (!message || !sessionId) return;
+  addMessage("user", message);
+  turnInput.value = "";
+  setBusy(true);
+  try {
+    const res = await fetch(`${API_BASE}/public/ai-phone-menu/sessions/${sessionId}/turn`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, message }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Error ${res.status}`);
+    }
+    const data = await res.json();
+    addMessage("assistant", data.reply);
+    if (data.ended) {
+      addMessage("system", "— Llamada finalizada por el sistema —");
+      endCallUi("Llamada finalizada");
+    }
+  } catch (e) {
+    addMessage("system", "Error: " + e.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+callBtn.addEventListener("click", () => {
+  if (callActive) {
+    endCallUi("Llamada colgada");
+  } else {
+    startCall();
+  }
+});
+
+sendBtn.addEventListener("click", sendTurn);
+turnInput.addEventListener("keyup", (e) => { if (e.key === "Enter") sendTurn(); });
+</script>
+</body>
+</html>

@@ -46,6 +46,9 @@ export type Permission =
   | 'translation:write'
   // Reports (revenue analysis)
   | 'report:read'
+  // Expenses (manual expense log)
+  | 'expense:read'
+  | 'expense:write'
   // Billing customers (Factura)
   | 'billing_customer:read'
   | 'billing_customer:write'
@@ -85,6 +88,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Set<Permission | '*'>> = {
     'inventory:read', 'inventory:write',
     'translation:read', 'translation:write',
     'report:read',
+    'expense:read', 'expense:write',
     'schedule:read', 'schedule:write',
     'staff_contract:read', 'staff_contract:manage',
   ]),

@@ -2594,6 +2594,98 @@ class AiPhoneOrderTurn(SQLModel):
     message: str
 
 
+class AiPhoneMenuDevice(SQLModel, table=True):
+    """A physical phone registered to answer 'explain the menu' calls (see
+    ai_phone_menu_service.py). Authenticated by a bearer token (hashed here, shown to
+    staff only once at creation) instead of a staff login — the caller is a customer
+    who picked up a handset, not a logged-in user."""
+
+    __tablename__ = "ai_phone_menu_device"
+
+    id: int | None = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    label: str = Field(default="Teléfono 1", max_length=50)
+    token_hash: str = Field(index=True, unique=True)
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    last_used_at: datetime | None = None
+
+
+class AiPhoneMenuDeviceCreate(SQLModel):
+    label: str = "Teléfono 1"
+
+
+class AiPhoneMenuSessionStatus(str, Enum):
+    active = "active"
+    ended = "ended"
+
+
+class AiPhoneMenuSession(SQLModel, table=True):
+    """One bounded 'explain the menu' phone conversation — no order tools, no Order/
+    OrderItem link, hard-capped by time and turn count (see settings.phone_menu_session_*)
+    so a stray or abused device token has a bounded cost."""
+
+    __tablename__ = "ai_phone_menu_session"
+
+    id: int | None = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    device_id: int = Field(foreign_key="ai_phone_menu_device.id", index=True)
+    status: AiPhoneMenuSessionStatus = Field(default=AiPhoneMenuSessionStatus.active, index=True)
+    turn_count: int = Field(default=0)
+    transcript: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    ended_at: datetime | None = None
+
+
+class AiPhoneMenuSessionTurn(SQLModel):
+    token: str
+    message: str
+
+
+class AiPhoneMenuSessionStart(SQLModel):
+    token: str
+
+
+# Curated, editable-in-code list — not a DB enum — so adding a category later is a one-line
+# change, not a migration. The frontend dropdown and GET /expenses/categories both read this.
+EXPENSE_CATEGORIES: list[str] = [
+    "Insumos y materia prima",
+    "Nómina y personal",
+    "Servicios básicos (luz, agua, internet)",
+    "Alquiler",
+    "Mantenimiento y reparaciones",
+    "Marketing y publicidad",
+    "Transporte y delivery",
+    "Impuestos",
+    "Limpieza e insumos de aseo",
+    "Otros",
+]
+
+
+class Expense(SQLModel, table=True):
+    """A manually-recorded operating expense (Reports module — 'Registrar gasto'). Not
+    tied to any order/product; purely for the owner/admin to track outgoing cash against
+    the sales revenue already shown in Reports."""
+
+    __tablename__ = "expense"
+
+    id: int | None = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    category: str = Field(max_length=50)
+    amount_cents: int
+    description: str | None = Field(default=None, max_length=500)
+    expense_date: date = Field(index=True)
+    created_by_user_id: int | None = Field(default=None, foreign_key="user.id")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class ExpenseCreate(SQLModel):
+    category: str = Field(max_length=50)
+    amount_cents: int
+    description: str | None = Field(default=None, max_length=500)
+    expense_date: date
+
+
 class DeliveryIntegrationUpsert(SQLModel):
     provider_key: str = Field(max_length=64)
     enabled: bool = False

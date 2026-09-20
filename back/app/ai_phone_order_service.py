@@ -210,7 +210,10 @@ def _execute_tool(session: Session, draft: models.AiPhoneOrder, name: str, args:
     return {"ok": False, "error": f"herramienta desconocida: {name}"}
 
 
-def _chat_completion(messages: list[dict]) -> dict:
+def _chat_completion(messages: list[dict], tools: list[dict] | None = ORDER_TOOLS) -> dict:
+    """Shared Chat Completions call. `tools=None` (used by the menu-Q&A assistant) omits
+    function-calling entirely — cheaper and makes it structurally impossible for that
+    simpler assistant to invoke order-mutating tools."""
     api_key = (settings.phone_order_ai_api_key or settings.product_vision_api_key or "").strip()
     if not api_key:
         raise RuntimeError("phone_order_ai_not_configured")
@@ -219,10 +222,11 @@ def _chat_completion(messages: list[dict]) -> dict:
     payload = {
         "model": model,
         "messages": messages,
-        "tools": ORDER_TOOLS,
-        "tool_choice": "auto",
         "temperature": 0.3,
     }
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"
     resp = requests.post(
         url,
         json=payload,

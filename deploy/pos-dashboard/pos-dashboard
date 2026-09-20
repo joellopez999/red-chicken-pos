@@ -8,5 +8,9 @@ if ! systemctl --user is-active --quiet pos-dashboard.service; then
   sleep 1
 fi
 
+# Un solo xdg-open (arranca el navegador si no está corriendo); el segundo se
+# manda 2s después para darle tiempo a Firefox/Chrome de levantar su canal de
+# control remoto — mandar ambos casi al mismo tiempo hace que el navegador
+# recién arrancado "pierda" el segundo aviso y solo abra una pestaña.
 xdg-open "https://pos.redchickenec.com" >/dev/null 2>&1 &
-xdg-open "http://127.0.0.1:8090" >/dev/null 2>&1 &
+( sleep 2; xdg-open "http://127.0.0.1:8090" >/dev/null 2>&1 ) &

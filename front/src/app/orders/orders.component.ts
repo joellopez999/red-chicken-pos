@@ -18,6 +18,7 @@ import {
   Tax,
   User,
   OrderDeliveryUpdate,
+  AiPhoneOrderDraft,
 } from '../services/api.service';
 import { AudioService } from '../services/audio.service';
 import { WaiterAlertService, WaiterAlertItem } from '../services/waiter-alert.service';
@@ -1939,6 +1940,106 @@ ModuleRegistry.registerModules([
           </div>
         }
 
+        <!-- AI phone orders: floating pending-review button -->
+        @if (canManageAiPhoneOrders()) {
+          <button type="button" class="ai-phone-fab" (click)="openAiPhoneOrdersModal()">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 3 5.18 2 2 0 0 1 5 3h3a2 2 0 0 1 2 1.72c.13.81.36 1.61.68 2.36a2 2 0 0 1-.45 2.11L8.91 10.5a16 16 0 0 0 6.59 6.59l1.31-1.32a2 2 0 0 1 2.11-.45c.75.32 1.55.55 2.36.68A2 2 0 0 1 22 16.92z"/>
+            </svg>
+            <span>{{ 'ORDERS.AI_PHONE_BUTTON' | translate }}</span>
+            @if (aiPhoneOrderPendingCount() > 0) {
+              <span class="ai-phone-fab-badge">{{ aiPhoneOrderPendingCount() }}</span>
+            }
+          </button>
+        }
+
+        @if (aiPhoneOrdersModalOpen()) {
+          <div class="modal-overlay" style="z-index: 1150;" (click)="closeAiPhoneOrdersModal()">
+            <div class="modal modal-lg ai-phone-modal" (click)="$event.stopPropagation()">
+              <div class="modal-header">
+                <h3>{{ 'ORDERS.AI_PHONE_TITLE' | translate }}</h3>
+                <button class="icon-btn" (click)="closeAiPhoneOrdersModal()">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                  </svg>
+                </button>
+              </div>
+
+              <div class="ai-phone-new-sim">
+                <label>{{ 'ORDERS.AI_PHONE_NEW_SIMULATION' | translate }}</label>
+                <div class="ai-phone-new-sim-row">
+                  <input type="text" [(ngModel)]="aiPhoneOrderNewLabel" [placeholder]="'ORDERS.AI_PHONE_PHONE_LABEL' | translate" />
+                  <button type="button" class="btn btn-secondary" [disabled]="aiPhoneOrderStartingSimulation()" (click)="startAiPhoneOrderSimulation()">
+                    {{ 'ORDERS.AI_PHONE_START_SIMULATION' | translate }}
+                  </button>
+                </div>
+              </div>
+
+              @if (aiPhoneOrders().length === 0) {
+                <p class="ai-phone-empty">{{ 'ORDERS.AI_PHONE_EMPTY' | translate }}</p>
+              } @else {
+                <div class="ai-phone-draft-list">
+                  @for (draft of aiPhoneOrders(); track draft.id) {
+                    <div class="ai-phone-draft-card">
+                      <div class="ai-phone-draft-header">
+                        <strong>{{ draft.phone_label }}</strong>
+                        <span class="ai-phone-status-badge" [class]="draft.status">{{ aiPhoneOrderStatusLabel(draft.status) }}</span>
+                      </div>
+
+                      @if (draft.items.length === 0) {
+                        <p class="ai-phone-empty-items">{{ 'ORDERS.AI_PHONE_EMPTY_ITEMS' | translate }}</p>
+                      } @else {
+                        <ul class="ai-phone-items">
+                          @for (it of draft.items; track $index) {
+                            <li>
+                              <span>{{ it.quantity }}× {{ it.product_name }}</span>
+                              <span>{{ formatPrice(it.price_cents * it.quantity) }}</span>
+                            </li>
+                          }
+                        </ul>
+                        <div class="ai-phone-total">
+                          <span>{{ 'ORDERS.AI_PHONE_TOTAL' | translate }}</span>
+                          <strong>{{ formatPrice(aiPhoneOrderDraftTotal(draft)) }}</strong>
+                        </div>
+                      }
+
+                      @if (draft.customer_note) {
+                        <p class="ai-phone-note"><em>{{ 'ORDERS.AI_PHONE_CUSTOMER_NOTE' | translate }}:</em> {{ draft.customer_note }}</p>
+                      }
+
+                      @if (draft.status === 'in_progress') {
+                        @if (aiPhoneOrderLastReply[draft.id]) {
+                          <p class="ai-phone-reply">"{{ aiPhoneOrderLastReply[draft.id] }}"</p>
+                        }
+                        <div class="ai-phone-sim-input">
+                          <input type="text"
+                                 [(ngModel)]="aiPhoneOrderDraftMessages[draft.id]"
+                                 [placeholder]="'ORDERS.AI_PHONE_TYPE_MESSAGE' | translate"
+                                 (keyup.enter)="sendAiPhoneOrderSimMessage(draft)" />
+                          <button type="button" class="btn btn-secondary" [disabled]="aiPhoneOrderBusyId() === draft.id" (click)="sendAiPhoneOrderSimMessage(draft)">
+                            {{ 'ORDERS.AI_PHONE_SEND' | translate }}
+                          </button>
+                        </div>
+                      }
+
+                      @if (draft.status === 'pending_review') {
+                        <div class="ai-phone-review-actions">
+                          <button type="button" class="btn btn-secondary" [disabled]="aiPhoneOrderBusyId() === draft.id" (click)="confirmRejectAiPhoneOrder(draft)">
+                            {{ 'ORDERS.AI_PHONE_REJECT' | translate }}
+                          </button>
+                          <button type="button" class="btn btn-primary" [disabled]="aiPhoneOrderBusyId() === draft.id" (click)="acceptAiPhoneOrder(draft)">
+                            {{ 'ORDERS.AI_PHONE_ACCEPT' | translate }}
+                          </button>
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+          </div>
+        }
+
         <!-- Waiter Alert Banner -->
         @if (waiterAlert()) {
           <div class="waiter-alert-banner" [class.payment]="waiterAlert()!.type === 'payment_requested'">
@@ -3301,6 +3402,8 @@ export class OrdersComponent implements OnInit, OnDestroy {
   canCancelOrder = computed(() => this.permissions.hasPermission(this.api.getCurrentUser(), 'order:cancel'));
   canRemoveItem = computed(() => this.permissions.hasPermission(this.api.getCurrentUser(), 'order:remove_item'));
   canDeleteOrder = computed(() => this.permissions.hasPermission(this.api.getCurrentUser(), 'order:delete'));
+  /** AI phone order draft creation/turns/accept/reject all require the same permission as changing order status. */
+  canManageAiPhoneOrders = computed(() => this.permissions.hasPermission(this.api.getCurrentUser(), 'order:update_status'));
 
   // Get browser's timezone automatically
   private getBrowserTimezone(): string {
@@ -3320,6 +3423,18 @@ export class OrdersComponent implements OnInit, OnDestroy {
   private tableScopeQuerySub?: Subscription;
   private toastTimeout?: ReturnType<typeof setTimeout>;
   private quantityDebounceTimeout?: ReturnType<typeof setTimeout>;
+  private aiPhoneOrderPollHandle?: ReturnType<typeof setInterval>;
+
+  // AI phone order module: floating "pending review" widget + simple simulated-call chat
+  // (real phone/Arduino hardware isn't wired up yet, so this doubles as the test harness).
+  aiPhoneOrdersModalOpen = signal(false);
+  aiPhoneOrders = signal<AiPhoneOrderDraft[]>([]);
+  aiPhoneOrderPendingCount = computed(() => this.aiPhoneOrders().filter(d => d.status === 'pending_review').length);
+  aiPhoneOrderBusyId = signal<number | null>(null);
+  aiPhoneOrderNewLabel = 'Teléfono 1';
+  aiPhoneOrderStartingSimulation = signal(false);
+  aiPhoneOrderDraftMessages: Record<number, string> = {};
+  aiPhoneOrderLastReply: Record<number, string> = {};
 
   orders = signal<Order[]>([]);
   /** When set (via `?table=` query), order lists show only this table's orders. */
@@ -3910,6 +4025,10 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.loadTenantSettings();
     this.ensureDeliveryLookups();
     this.loadOrders();
+    if (this.canManageAiPhoneOrders()) {
+      this.refreshAiPhoneOrders();
+      this.aiPhoneOrderPollHandle = setInterval(() => this.refreshAiPhoneOrders(), 8000);
+    }
     // Connect WebSocket for real-time updates (non-blocking - HTTP requests work without it)
     try {
       this.api.connectWebSocket();
@@ -3967,6 +4086,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   ngOnDestroy() {
     this.wsSub?.unsubscribe();
     this.tableScopeQuerySub?.unsubscribe();
+    if (this.aiPhoneOrderPollHandle) clearInterval(this.aiPhoneOrderPollHandle);
   }
 
   clearTableScope() {
@@ -4908,6 +5028,110 @@ export class OrdersComponent implements OnInit, OnDestroy {
       this.toastTimeout = undefined;
     }
     this.toast.set({ message, type });
+  }
+
+  // --- AI phone orders (module: pending-review queue + simulated-call test harness) ---
+
+  refreshAiPhoneOrders(): void {
+    this.api.listAiPhoneOrders().subscribe({
+      next: (drafts) => this.aiPhoneOrders.set(drafts.filter(d => d.status === 'in_progress' || d.status === 'pending_review')),
+      error: () => {}, // silent — this is a background poll, don't spam toasts
+    });
+  }
+
+  openAiPhoneOrdersModal(): void {
+    this.refreshAiPhoneOrders();
+    this.aiPhoneOrdersModalOpen.set(true);
+  }
+
+  closeAiPhoneOrdersModal(): void {
+    this.aiPhoneOrdersModalOpen.set(false);
+  }
+
+  aiPhoneOrderStatusLabel(status: string): string {
+    switch (status) {
+      case 'in_progress': return this.translate.instant('ORDERS.AI_PHONE_STATUS_IN_PROGRESS');
+      case 'pending_review': return this.translate.instant('ORDERS.AI_PHONE_STATUS_PENDING_REVIEW');
+      case 'accepted': return this.translate.instant('ORDERS.AI_PHONE_STATUS_ACCEPTED');
+      case 'rejected': return this.translate.instant('ORDERS.AI_PHONE_STATUS_REJECTED');
+      default: return status;
+    }
+  }
+
+  startAiPhoneOrderSimulation(): void {
+    const label = (this.aiPhoneOrderNewLabel || 'Teléfono 1').trim() || 'Teléfono 1';
+    this.aiPhoneOrderStartingSimulation.set(true);
+    this.api.createAiPhoneOrder(label).subscribe({
+      next: (draft) => {
+        this.aiPhoneOrderStartingSimulation.set(false);
+        this.aiPhoneOrders.set([draft, ...this.aiPhoneOrders()]);
+      },
+      error: () => {
+        this.aiPhoneOrderStartingSimulation.set(false);
+        this.showToast(this.translate.instant('ORDERS.AI_PHONE_ERROR'), 'error');
+      },
+    });
+  }
+
+  sendAiPhoneOrderSimMessage(draft: AiPhoneOrderDraft): void {
+    const message = (this.aiPhoneOrderDraftMessages[draft.id] || '').trim();
+    if (!message || this.aiPhoneOrderBusyId() === draft.id) return;
+    this.aiPhoneOrderBusyId.set(draft.id);
+    this.api.advanceAiPhoneOrderTurn(draft.id, message).subscribe({
+      next: (result) => {
+        this.aiPhoneOrderBusyId.set(null);
+        this.aiPhoneOrderDraftMessages[draft.id] = '';
+        this.aiPhoneOrderLastReply[draft.id] = result.reply;
+        this.aiPhoneOrders.set(this.aiPhoneOrders().map(d => d.id === draft.id
+          ? { ...d, items: result.items, customer_note: result.customer_note, status: result.status as AiPhoneOrderDraft['status'] }
+          : d));
+      },
+      error: (err) => {
+        this.aiPhoneOrderBusyId.set(null);
+        const msg = err?.status === 400 && err?.error?.detail?.includes('PHONE_ORDER_AI_API_KEY')
+          ? this.translate.instant('ORDERS.AI_PHONE_NOT_CONFIGURED')
+          : this.translate.instant('ORDERS.AI_PHONE_ERROR');
+        this.showToast(msg, 'error');
+      },
+    });
+  }
+
+  acceptAiPhoneOrder(draft: AiPhoneOrderDraft): void {
+    if (this.aiPhoneOrderBusyId() === draft.id) return;
+    this.aiPhoneOrderBusyId.set(draft.id);
+    this.api.acceptAiPhoneOrder(draft.id).subscribe({
+      next: () => {
+        this.aiPhoneOrderBusyId.set(null);
+        this.aiPhoneOrders.set(this.aiPhoneOrders().filter(d => d.id !== draft.id));
+        this.showToast(this.translate.instant('ORDERS.AI_PHONE_ACCEPTED_TOAST'), 'success');
+        this.loadOrders();
+      },
+      error: () => {
+        this.aiPhoneOrderBusyId.set(null);
+        this.showToast(this.translate.instant('ORDERS.AI_PHONE_ERROR'), 'error');
+      },
+    });
+  }
+
+  confirmRejectAiPhoneOrder(draft: AiPhoneOrderDraft): void {
+    this.openConfirmModal(this.translate.instant('ORDERS.AI_PHONE_REJECT_CONFIRM'), () => {
+      this.aiPhoneOrderBusyId.set(draft.id);
+      this.api.rejectAiPhoneOrder(draft.id).subscribe({
+        next: () => {
+          this.aiPhoneOrderBusyId.set(null);
+          this.aiPhoneOrders.set(this.aiPhoneOrders().filter(d => d.id !== draft.id));
+          this.showToast(this.translate.instant('ORDERS.AI_PHONE_REJECTED_TOAST'), 'success');
+        },
+        error: () => {
+          this.aiPhoneOrderBusyId.set(null);
+          this.showToast(this.translate.instant('ORDERS.AI_PHONE_ERROR'), 'error');
+        },
+      });
+    });
+  }
+
+  aiPhoneOrderDraftTotal(draft: AiPhoneOrderDraft): number {
+    return draft.items.reduce((sum, it) => sum + it.price_cents * it.quantity, 0);
   }
 
   openConfirmModal(message: string, onConfirm: () => void, options?: { confirmText?: string; requireReason?: boolean; requirePin?: boolean }) {

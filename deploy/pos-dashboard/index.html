@@ -29,6 +29,7 @@
   .dot.off { background: var(--red); box-shadow: 0 0 0 4px rgba(220,38,38,.15); }
   .status-text { font-size: 18px; font-weight: 600; }
   .status-detail { font-size: 13px; color: var(--muted); }
+  .hint { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
   .actions { margin-left: auto; display: flex; gap: 8px; }
   button {
     border: none; border-radius: 8px; padding: 10px 16px; font-size: 14px; font-weight: 600;
@@ -148,8 +149,9 @@
     </div>
 
     <div class="card">
-      <h2>Acceso remoto (Tailscale)</h2>
+      <h2>Tailscale (respaldo + SSH remoto)</h2>
       <div id="tailscaleBody">-</div>
+      <p class="hint">El acceso público principal es Cloudflare (pos.redchickenec.com). Esto es el respaldo y el canal por el que te conectas por SSH desde el teléfono.</p>
     </div>
 
     <div class="card">

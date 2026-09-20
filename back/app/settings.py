@@ -176,6 +176,16 @@ class Settings(BaseSettings):
     )
     phone_order_ai_model: str = Field(default="gpt-4o-mini", validation_alias="PHONE_ORDER_AI_MODEL")
 
+    # AI phone "explain the menu" assistant (see ai_phone_menu_service.py) — same OpenAI
+    # credentials as above, but a separate, much cheaper/simpler flow: no tools, no order
+    # creation, hard-capped conversation so a stray/abused device token can't run up cost.
+    phone_menu_session_max_seconds: int = Field(
+        default=120, validation_alias="PHONE_MENU_SESSION_MAX_SECONDS"
+    )
+    phone_menu_session_max_turns: int = Field(
+        default=6, validation_alias="PHONE_MENU_SESSION_MAX_TURNS"
+    )
+
     # Production mode (enables secure cookies, stricter CORS, etc.)
     is_production: bool = Field(default=False, validation_alias="PRODUCTION")
 
@@ -226,6 +236,11 @@ class Settings(BaseSettings):
         default=20,
         validation_alias="RATE_LIMIT_LOYALTY_JOIN_PER_HOUR",
         description="Max loyalty join submissions per IP per hour (public form)",
+    )
+    rate_limit_phone_menu_per_hour: int = Field(
+        default=30,
+        validation_alias="RATE_LIMIT_PHONE_MENU_PER_HOUR",
+        description="Max 'explain the menu' phone sessions per device token per hour (public, token-authenticated)",
     )
     rate_limit_waiting_list_per_hour: int = Field(
         default=10,
@@ -355,6 +370,7 @@ class Settings(BaseSettings):
             self.rate_limit_loyalty_join_per_hour = 200
             self.rate_limit_waiting_list_per_hour = 200
             self.rate_limit_password_reset_per_hour = 100
+            self.rate_limit_phone_menu_per_hour = 200
         return self
 
     @model_validator(mode="after")

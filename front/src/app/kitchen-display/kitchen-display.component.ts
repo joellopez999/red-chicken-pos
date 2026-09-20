@@ -1143,7 +1143,11 @@ export class KitchenDisplayComponent implements OnInit, AfterViewInit, OnDestroy
           this.initialLoadDone = true;
         }
       },
-      error: () => {
+      error: (err) => {
+        // Background refreshes retry on their own via the 15s interval, but a failure here
+        // used to be completely silent — if it kept failing, the screen would look "frozen"
+        // with no error visible anywhere. Log it so it shows up in devtools at least.
+        console.warn('Kitchen display: failed to refresh orders', err?.status ?? err);
         if (isInitial) {
           this.loading.set(false);
           this.initialLoadDone = true;

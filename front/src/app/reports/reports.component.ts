@@ -25,6 +25,8 @@ import {
   User,
   WorkSession,
   workSessionNetWorkSeconds,
+  Expense,
+  ExpenseCreate,
 } from '../services/api.service';
 import { ApiErrorMessageService } from '../services/api-error-message.service';
 import { PermissionService } from '../services/permission.service';
@@ -93,6 +95,21 @@ export class ReportsComponent implements OnInit {
       return n.includes(q) || e.includes(q);
     });
   });
+
+  // Manual expense log ("Registrar gasto") — independent of orders, shown alongside
+  // the sales report so the owner/admin can see revenue vs. outgoing cash together.
+  reportsView = signal<'summary' | 'expenses'>('summary');
+  expenses = signal<Expense[]>([]);
+  expensesLoading = signal(false);
+  expensesTotalCents = computed(() => this.expenses().reduce((sum, e) => sum + e.amount_cents, 0));
+  expenseCategories = signal<string[]>([]);
+  expenseModalOpen = signal(false);
+  expenseSaving = signal(false);
+  expenseError = signal('');
+  expenseFormCategory = '';
+  expenseFormAmount = '';
+  expenseFormDate = signal('');
+  expenseFormDescription = '';
 
   @ViewChild('attendanceStaffDropdownRoot') attendanceStaffDropdownRoot?: ElementRef<HTMLElement>;
   fromDate = signal('');
@@ -383,10 +400,94 @@ export class ReportsComponent implements OnInit {
         this.loadWorkSessions();
       },
     });
+    this.loadExpenses();
   }
 
   canViewAttendance(): boolean {
     return this.permissions.hasPermission(this.api.getCurrentUser(), 'report:read');
+  }
+
+  canManageExpenses(): boolean {
+    return this.permissions.hasPermission(this.api.getCurrentUser(), 'expense:write');
+  }
+
+  loadExpenses(): void {
+    if (!this.canManageExpenses()) return;
+    const from = this.fromDate();
+    const to = this.toDate();
+    if (!from || !to) return;
+    this.expensesLoading.set(true);
+    this.api.listExpenses(from, to).subscribe({
+      next: (list) => {
+        this.expenses.set(list);
+        this.expensesLoading.set(false);
+      },
+      error: () => this.expensesLoading.set(false),
+    });
+  }
+
+  openExpenseModal(): void {
+    this.expenseError.set('');
+    this.expenseFormCategory = '';
+    this.expenseFormAmount = '';
+    this.expenseFormDate.set(this.fmtDate(new Date()));
+    this.expenseFormDescription = '';
+    this.expenseModalOpen.set(true);
+    if (this.expenseCategories().length === 0) {
+      this.api.getExpenseCategories().subscribe({
+        next: (cats) => this.expenseCategories.set(cats),
+        error: () => {},
+      });
+    }
+  }
+
+  closeExpenseModal(): void {
+    this.expenseModalOpen.set(false);
+  }
+
+  submitExpense(): void {
+    const category = this.expenseFormCategory.trim();
+    const amount = parseFloat(this.expenseFormAmount.replace(',', '.'));
+    const expenseDate = this.expenseFormDate();
+    if (!category) {
+      this.expenseError.set(this.translate.instant('REPORTS.EXPENSE_CATEGORY_REQUIRED'));
+      return;
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      this.expenseError.set(this.translate.instant('REPORTS.EXPENSE_AMOUNT_INVALID'));
+      return;
+    }
+    if (!expenseDate) {
+      this.expenseError.set(this.translate.instant('REPORTS.EXPENSE_DATE_REQUIRED'));
+      return;
+    }
+    this.expenseSaving.set(true);
+    this.expenseError.set('');
+    const body: ExpenseCreate = {
+      category,
+      amount_cents: Math.round(amount * 100),
+      description: this.expenseFormDescription.trim() || null,
+      expense_date: expenseDate,
+    };
+    this.api.createExpense(body).subscribe({
+      next: () => {
+        this.expenseSaving.set(false);
+        this.expenseModalOpen.set(false);
+        this.loadExpenses();
+      },
+      error: (err) => {
+        this.expenseSaving.set(false);
+        this.expenseError.set(this.apiErr.fromHttpError(err, 'REPORTS.EXPENSE_SAVE_FAILED'));
+      },
+    });
+  }
+
+  deleteExpenseRow(expense: Expense): void {
+    if (!confirm(this.translate.instant('REPORTS.EXPENSE_DELETE_CONFIRM'))) return;
+    this.api.deleteExpense(expense.id).subscribe({
+      next: () => this.loadExpenses(),
+      error: () => {},
+    });
   }
 
   @HostListener('document:click', ['$event'])

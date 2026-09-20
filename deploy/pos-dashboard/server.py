@@ -674,6 +674,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+        elif self.path == "/menu-test.html" or self.path.startswith("/menu-test.html?"):
+            html_path = STATIC_DIR / "menu-test.html"
+            body = html_path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
         elif self.path == "/api/status":
             self._send_json(build_status())
         elif self.path.startswith("/api/staff-log"):

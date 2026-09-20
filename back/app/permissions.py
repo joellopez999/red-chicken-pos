@@ -66,6 +66,10 @@ class Permission(str, Enum):
     # Reports (revenue / sales analysis – owner & admin)
     REPORT_READ = "report:read"
 
+    # Expenses (manual expense log, shown alongside Reports – owner & admin)
+    EXPENSE_READ = "expense:read"
+    EXPENSE_WRITE = "expense:write"
+
     # Billing customers (for Factura / tax invoicing)
     BILLING_CUSTOMER_READ = "billing_customer:read"
     BILLING_CUSTOMER_WRITE = "billing_customer:write"
@@ -141,6 +145,9 @@ ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
         Permission.TRANSLATION_WRITE,
         # Reports
         Permission.REPORT_READ,
+        # Expenses
+        Permission.EXPENSE_READ,
+        Permission.EXPENSE_WRITE,
         # Working plan
         Permission.SCHEDULE_READ,
         Permission.SCHEDULE_WRITE,
