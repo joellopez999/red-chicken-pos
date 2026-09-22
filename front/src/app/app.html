@@ -1,1 +1,13 @@
 <router-outlet />
+
+@if (aiPhoneNotif.toast(); as t) {
+  <div class="ai-phone-global-toast" role="status" (click)="aiPhoneNotif.dismissToast()">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 3 5.18 2 2 0 0 1 5 3h3a2 2 0 0 1 2 1.72c.13.81.36 1.61.68 2.36a2 2 0 0 1-.45 2.11L8.91 10.5a16 16 0 0 0 6.59 6.59l1.31-1.32a2 2 0 0 1 2.11-.45c.75.32 1.55.55 2.36.68A2 2 0 0 1 22 16.92z"/>
+    </svg>
+    <div class="ai-phone-global-toast-text">
+      <strong>{{ 'NAV.AI_PHONE_TOAST_TITLE' | translate: { phone: t.phoneLabel } }}</strong>
+      <span>{{ 'NAV.AI_PHONE_TOAST_HINT' | translate }}</span>
+    </div>
+  </div>
+}

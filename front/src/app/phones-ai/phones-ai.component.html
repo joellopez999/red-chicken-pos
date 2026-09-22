@@ -1,0 +1,88 @@
+<app-sidebar>
+  <div class="phones-ai-page" data-testid="phones-ai-page">
+    <div class="page-header">
+      <div class="header-text">
+        <h1>{{ 'NAV.PHONES_AI' | translate }}</h1>
+        <p class="subtitle">{{ 'ORDERS.AI_PHONE_TITLE' | translate }}</p>
+      </div>
+    </div>
+
+    @if (toast()) {
+      <div class="phones-ai-toast" [class]="toast()!.type">
+        <span>{{ toast()!.message }}</span>
+      </div>
+    }
+
+    <div class="card ai-phone-new-sim">
+      <label>{{ 'ORDERS.AI_PHONE_NEW_SIMULATION' | translate }}</label>
+      <div class="ai-phone-new-sim-row">
+        <input type="text" [(ngModel)]="newLabel" [placeholder]="'ORDERS.AI_PHONE_PHONE_LABEL' | translate" />
+        <button type="button" class="btn btn-secondary" [disabled]="startingSimulation()" (click)="startSimulation()">
+          {{ 'ORDERS.AI_PHONE_START_SIMULATION' | translate }}
+        </button>
+      </div>
+    </div>
+
+    @if (drafts().length === 0) {
+      <p class="ai-phone-empty">{{ 'ORDERS.AI_PHONE_EMPTY' | translate }}</p>
+    } @else {
+      <div class="ai-phone-draft-list">
+        @for (draft of drafts(); track draft.id) {
+          <div class="card ai-phone-draft-card">
+            <div class="ai-phone-draft-header">
+              <strong>{{ draft.phone_label }}</strong>
+              <span class="ai-phone-status-badge" [class]="draft.status">{{ statusLabel(draft.status) }}</span>
+            </div>
+
+            @if (draft.items.length === 0) {
+              <p class="ai-phone-empty-items">{{ 'ORDERS.AI_PHONE_EMPTY_ITEMS' | translate }}</p>
+            } @else {
+              <ul class="ai-phone-items">
+                @for (it of draft.items; track $index) {
+                  <li>
+                    <span>{{ it.quantity }}× {{ it.product_name }}</span>
+                    <span>{{ formatPrice(it.price_cents * it.quantity) }}</span>
+                  </li>
+                }
+              </ul>
+              <div class="ai-phone-total">
+                <span>{{ 'ORDERS.AI_PHONE_TOTAL' | translate }}</span>
+                <strong>{{ formatPrice(draftTotal(draft)) }}</strong>
+              </div>
+            }
+
+            @if (draft.customer_note) {
+              <p class="ai-phone-note"><em>{{ 'ORDERS.AI_PHONE_CUSTOMER_NOTE' | translate }}:</em> {{ draft.customer_note }}</p>
+            }
+
+            @if (draft.status === 'in_progress') {
+              @if (lastReply[draft.id]) {
+                <p class="ai-phone-reply">"{{ lastReply[draft.id] }}"</p>
+              }
+              <div class="ai-phone-sim-input">
+                <input type="text"
+                       [(ngModel)]="draftMessages[draft.id]"
+                       [placeholder]="'ORDERS.AI_PHONE_TYPE_MESSAGE' | translate"
+                       (keyup.enter)="sendMessage(draft)" />
+                <button type="button" class="btn btn-secondary" [disabled]="busyId() === draft.id" (click)="sendMessage(draft)">
+                  {{ 'ORDERS.AI_PHONE_SEND' | translate }}
+                </button>
+              </div>
+            }
+
+            @if (draft.status === 'pending_review') {
+              <div class="ai-phone-review-actions">
+                <button type="button" class="btn btn-secondary" [disabled]="busyId() === draft.id" (click)="confirmReject(draft)">
+                  {{ 'ORDERS.AI_PHONE_REJECT' | translate }}
+                </button>
+                <button type="button" class="btn btn-primary" [disabled]="busyId() === draft.id" (click)="accept(draft)">
+                  {{ 'ORDERS.AI_PHONE_ACCEPT' | translate }}
+                </button>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    }
+  </div>
+</app-sidebar>

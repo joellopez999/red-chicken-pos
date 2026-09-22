@@ -328,6 +328,10 @@ class User(SQLModel, table=True):
     # Optional TOTP (one-time password) for two-factor authentication
     otp_secret: str | None = Field(default=None, exclude=True)  # Never serialized in API responses
     otp_enabled: bool = Field(default=False)
+    # Alternative 2FA: a fresh 6-digit code emailed at each login (via Resend) instead of an
+    # authenticator app — no persistent secret needed, the code travels inside the short-lived
+    # otp_pending JWT itself (see security.py / main.py login flow).
+    email_otp_enabled: bool = Field(default=False)
     employee_number: str | None = Field(default=None, max_length=64)
 
 

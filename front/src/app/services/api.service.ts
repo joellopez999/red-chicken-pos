@@ -2277,9 +2277,14 @@ export class ApiService {
     );
   }
 
-  /** After login returned 403 with require_otp, submit OTP code to get tokens. */
-  loginWithOtp(tempToken: string, code: string): Observable<any> {
-    return this.http.post<any>(`${this.apiUrl}/token/otp`, { temp_token: tempToken, code }).pipe(
+  /** After login returned 403 with require_otp, submit OTP code to get tokens.
+   * `rememberDevice` sets a 30-day cookie so this same browser skips 2FA next time. */
+  loginWithOtp(tempToken: string, code: string, rememberDevice = false): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/token/otp`, {
+      temp_token: tempToken,
+      code,
+      remember_device: rememberDevice,
+    }).pipe(
       tap(() => {
         this.checkAuth().subscribe();
       })
@@ -2315,8 +2320,24 @@ export class ApiService {
     );
   }
 
-  getOtpStatus(): Observable<{ otp_enabled: boolean }> {
-    return this.http.get<{ otp_enabled: boolean }>(`${this.apiUrl}/users/me/otp/status`);
+  getOtpStatus(): Observable<{ otp_enabled: boolean; email_otp_enabled: boolean }> {
+    return this.http.get<{ otp_enabled: boolean; email_otp_enabled: boolean }>(`${this.apiUrl}/users/me/otp/status`);
+  }
+
+  setupEmailOtp(): Observable<{ setup_token: string }> {
+    return this.http.post<{ setup_token: string }>(`${this.apiUrl}/users/me/email-otp/setup`, {});
+  }
+
+  confirmEmailOtp(setupToken: string, code: string): Observable<{ status: string; email_otp_enabled: boolean }> {
+    return this.http.post<{ status: string; email_otp_enabled: boolean }>(
+      `${this.apiUrl}/users/me/email-otp/confirm`, { setup_token: setupToken, code }
+    );
+  }
+
+  disableEmailOtp(password: string): Observable<{ status: string; email_otp_enabled: boolean }> {
+    return this.http.post<{ status: string; email_otp_enabled: boolean }>(
+      `${this.apiUrl}/users/me/email-otp/disable`, { password }
+    );
   }
 
   setupOtp(): Observable<{ secret: string; provisioning_uri: string }> {

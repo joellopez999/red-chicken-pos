@@ -619,6 +619,8 @@ import { MAX_IMAGE_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_MB } from '../shared/image-upl
             </div>
             @if (otpStatusLoading()) {
               <div class="loading-state"><div class="spinner"></div><p>{{ 'SETTINGS.LOADING_SETTINGS' | translate }}</p></div>
+            } @else if (otpStatus()?.email_otp_enabled) {
+              <!-- Email 2FA already on — hide the authenticator-app option to avoid implying both are active at once -->
             } @else if (otpSetupResult()) {
               <div class="form-card">
                 <h3>{{ 'SETTINGS.OTP_SCAN_OR_ENTER' | translate }}</h3>
@@ -661,6 +663,46 @@ import { MAX_IMAGE_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_MB } from '../shared/image-upl
                 </button>
                 @if (otpError()) {
                   <p class="field-error">{{ otpError() }}</p>
+                }
+              </div>
+            }
+
+            @if (!otpStatusLoading() && !otpStatus()?.otp_enabled) {
+              <div class="form-card" style="margin-top: 1.5rem;" data-testid="settings-email-otp-card">
+                <h3>{{ 'SETTINGS.EMAIL_OTP_TITLE' | translate }}</h3>
+                @if (emailOtpSetupToken()) {
+                  <p class="hint">{{ 'SETTINGS.EMAIL_OTP_CHECK_INBOX' | translate }}</p>
+                  <div class="form-group">
+                    <label for="email-otp-confirm-code">{{ 'SETTINGS.OTP_ENTER_CODE' | translate }}</label>
+                    <input id="email-otp-confirm-code" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" [(ngModel)]="emailOtpConfirmCode" name="emailOtpConfirmCode" [placeholder]="'SETTINGS.OTP_CODE_PLACEHOLDER' | translate" />
+                    <button type="button" class="btn btn-primary" (click)="confirmEmailOtpEnable()" [disabled]="!emailOtpConfirmCode || emailOtpConfirmCode.length !== 6 || emailOtpConfirming()">
+                      {{ emailOtpConfirming() ? ('SETTINGS.OTP_CONFIRMING' | translate) : ('SETTINGS.OTP_ENABLE' | translate) }}
+                    </button>
+                    <button type="button" class="btn btn-secondary" (click)="cancelEmailOtpSetup()">{{ 'COMMON.CANCEL' | translate }}</button>
+                  </div>
+                  @if (emailOtpError()) {
+                    <p class="field-error">{{ emailOtpError() }}</p>
+                  }
+                } @else if (otpStatus()?.email_otp_enabled) {
+                  <p class="otp-enabled-msg">{{ 'SETTINGS.EMAIL_OTP_ENABLED' | translate }}</p>
+                  <div class="form-group">
+                    <label for="email-otp-disable-password">{{ 'SETTINGS.EMAIL_OTP_DISABLE_PASSWORD' | translate }}</label>
+                    <input id="email-otp-disable-password" type="password" [(ngModel)]="emailOtpDisablePassword" name="emailOtpDisablePassword" autocomplete="current-password" />
+                    <button type="button" class="btn btn-secondary" (click)="disableEmailOtp()" [disabled]="!emailOtpDisablePassword || emailOtpDisabling()">
+                      {{ emailOtpDisabling() ? ('SETTINGS.OTP_DISABLING' | translate) : ('SETTINGS.OTP_DISABLE' | translate) }}
+                    </button>
+                  </div>
+                  @if (emailOtpError()) {
+                    <p class="field-error">{{ emailOtpError() }}</p>
+                  }
+                } @else {
+                  <p class="hint">{{ 'SETTINGS.EMAIL_OTP_DESCRIPTION' | translate }}</p>
+                  <button type="button" class="btn btn-primary" (click)="startEmailOtpSetup()" [disabled]="emailOtpSettingUp()">
+                    {{ emailOtpSettingUp() ? ('SETTINGS.OTP_SETTING_UP' | translate) : ('SETTINGS.EMAIL_OTP_ENABLE_BUTTON' | translate) }}
+                  </button>
+                  @if (emailOtpError()) {
+                    <p class="field-error">{{ emailOtpError() }}</p>
+                  }
                 }
               </div>
             }
@@ -3284,7 +3326,7 @@ export class SettingsComponent implements OnInit, OnDestroy {
   newProductOnSale = true;
   providerProductError = signal('');
 
-  otpStatus = signal<{ otp_enabled: boolean } | null>(null);
+  otpStatus = signal<{ otp_enabled: boolean; email_otp_enabled?: boolean } | null>(null);
   otpStatusLoading = signal(false);
   otpSetupResult = signal<{ secret: string; provisioning_uri: string } | null>(null);
   otpConfirmCode = '';
@@ -3293,6 +3335,14 @@ export class SettingsComponent implements OnInit, OnDestroy {
   otpDisableCode = '';
   otpDisabling = signal(false);
   otpSettingUp = signal(false);
+
+  emailOtpSetupToken = signal<string | null>(null);
+  emailOtpConfirmCode = '';
+  emailOtpError = signal<string | null>(null);
+  emailOtpConfirming = signal(false);
+  emailOtpSettingUp = signal(false);
+  emailOtpDisablePassword = '';
+  emailOtpDisabling = signal(false);
 
   clockQrBusy = signal(false);
   clockQrDownloadBusy = signal(false);
@@ -4036,6 +4086,63 @@ export class SettingsComponent implements OnInit, OnDestroy {
       error: (err) => {
         this.otpError.set(err?.error?.detail || 'Invalid code');
         this.otpDisabling.set(false);
+      },
+    });
+  }
+
+  startEmailOtpSetup() {
+    this.emailOtpError.set(null);
+    this.emailOtpSettingUp.set(true);
+    this.api.setupEmailOtp().subscribe({
+      next: (result) => {
+        this.emailOtpSetupToken.set(result.setup_token);
+        this.emailOtpSettingUp.set(false);
+      },
+      error: (err) => {
+        this.emailOtpError.set(err?.error?.detail || 'Failed to send code');
+        this.emailOtpSettingUp.set(false);
+      },
+    });
+  }
+
+  confirmEmailOtpEnable() {
+    const token = this.emailOtpSetupToken();
+    if (!token || !this.emailOtpConfirmCode || this.emailOtpConfirmCode.length !== 6) return;
+    this.emailOtpError.set(null);
+    this.emailOtpConfirming.set(true);
+    this.api.confirmEmailOtp(token, this.emailOtpConfirmCode).subscribe({
+      next: () => {
+        this.otpStatus.update((s) => ({ otp_enabled: s?.otp_enabled ?? false, email_otp_enabled: true }));
+        this.emailOtpSetupToken.set(null);
+        this.emailOtpConfirmCode = '';
+        this.emailOtpConfirming.set(false);
+      },
+      error: (err) => {
+        this.emailOtpError.set(err?.error?.detail || 'Invalid code');
+        this.emailOtpConfirming.set(false);
+      },
+    });
+  }
+
+  cancelEmailOtpSetup() {
+    this.emailOtpSetupToken.set(null);
+    this.emailOtpConfirmCode = '';
+    this.emailOtpError.set(null);
+  }
+
+  disableEmailOtp() {
+    if (!this.emailOtpDisablePassword) return;
+    this.emailOtpError.set(null);
+    this.emailOtpDisabling.set(true);
+    this.api.disableEmailOtp(this.emailOtpDisablePassword).subscribe({
+      next: () => {
+        this.otpStatus.update((s) => ({ otp_enabled: s?.otp_enabled ?? false, email_otp_enabled: false }));
+        this.emailOtpDisablePassword = '';
+        this.emailOtpDisabling.set(false);
+      },
+      error: (err) => {
+        this.emailOtpError.set(err?.error?.detail || 'Incorrect password');
+        this.emailOtpDisabling.set(false);
       },
     });
   }

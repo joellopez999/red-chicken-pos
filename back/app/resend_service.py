@@ -22,6 +22,34 @@ RESEND_API_URL = "https://api.resend.com/emails"
 DEFAULT_FROM = "onboarding@resend.dev"  # Resend's shared test sender; verify a real domain for production.
 
 
+def send_simple_email(tenant: models.Tenant, to_email: str | list[str], subject: str, html: str) -> bool:
+    """Generic transactional email via the tenant's Resend key — used for the email-based 2FA
+    code (see main.py login flow) and any other simple, attachment-free notification."""
+    api_key = (decrypt_secret(tenant.resend_api_key, RESEND_API_KEY_DOMAIN) or "").strip()
+    recipients = [to_email] if isinstance(to_email, str) else list(to_email)
+    if not api_key or not recipients:
+        return False
+
+    from_email = (tenant.email_from or "").strip() or DEFAULT_FROM
+    from_name = (tenant.email_from_name or tenant.name or "").strip()
+    sender = f"{from_name} <{from_email}>" if from_name else from_email
+
+    try:
+        response = requests.post(
+            RESEND_API_URL,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"from": sender, "to": recipients, "subject": subject, "html": html},
+            timeout=15,
+        )
+        if response.status_code >= 300:
+            logger.warning("Resend simple email failed (%s): %s", response.status_code, response.text[:500])
+            return False
+        return True
+    except Exception as e:
+        logger.warning("Resend simple email request failed: %s", e)
+        return False
+
+
 def send_invoice_email(
     tenant: models.Tenant,
     to_email: str,

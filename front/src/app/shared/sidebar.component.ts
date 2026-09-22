@@ -13,6 +13,7 @@ import { TablesAreaPreferenceService } from '../services/tables-area-preference.
 import { StaffLayoutService } from '../services/staff-layout.service';
 import { ConnectivityService } from '../services/connectivity.service';
 import { OfflineOrderQueueService } from '../services/offline-order-queue.service';
+import { AiPhoneNotificationService } from '../services/ai-phone-notification.service';
 
 type NavGroupKey = 'operations' | 'planning' | 'catalog' | 'admin';
 
@@ -83,6 +84,17 @@ type NavGroupKey = 'operations' | 'planning' | 'catalog' | 'admin';
             </svg>
             <span>{{ 'NAV.ORDERS' | translate }}</span>
           </a>
+          @if (canManageAiPhoneOrders()) {
+            <a routerLink="/staff/phones-ai" routerLinkActive="active" class="nav-link" (click)="closeSidebar()">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 3 5.18 2 2 0 0 1 5 3h3a2 2 0 0 1 2 1.72c.13.81.36 1.61.68 2.36a2 2 0 0 1-.45 2.11L8.91 10.5a16 16 0 0 0 6.59 6.59l1.31-1.32a2 2 0 0 1 2.11-.45c.75.32 1.55.55 2.36.68A2 2 0 0 1 22 16.92z"/>
+              </svg>
+              <span>{{ 'NAV.PHONES_AI' | translate }}</span>
+              @if (aiPhoneNotif.pendingCount() > 0) {
+                <span class="nav-badge">{{ aiPhoneNotif.pendingCount() }}</span>
+              }
+            </a>
+          }
 
           @if (showOperationsGroup()) {
             <div class="nav-section">
@@ -368,6 +380,11 @@ export class SidebarComponent implements OnInit, AfterViewInit, OnDestroy {
   staffLayout = inject(StaffLayoutService);
   readonly connectivity = inject(ConnectivityService);
   readonly offlineQueue = inject(OfflineOrderQueueService);
+  readonly aiPhoneNotif = inject(AiPhoneNotificationService);
+
+  canManageAiPhoneOrders(): boolean {
+    return this.permissions.hasPermission(this.api.getCurrentUser(), 'order:update_status');
+  }
 
   @ViewChild('navScroll') navScroll?: ElementRef<HTMLElement>;
 
@@ -381,11 +398,7 @@ export class SidebarComponent implements OnInit, AfterViewInit, OnDestroy {
   version = environment.version;
   commitHash = environment.commitHash;
 
-  showOfflineBanner = computed(
-    () =>
-      !!this.user() &&
-      (this.connectivity.status() !== 'online' || this.offlineQueue.pendingCount() > 0)
-  );
+  showOfflineBanner = computed(() => false);
 
   canViewTables = computed(() => this.permissions.canAccessRoute(this.user(), '/tables'));
   canViewReservations = computed(() => this.permissions.hasPermission(this.user(), 'reservation:read'));

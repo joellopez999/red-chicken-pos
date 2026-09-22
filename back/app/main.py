@@ -51,6 +51,7 @@ from .ai_phone_order_routes import router as ai_phone_order_router
 from .ai_phone_menu_routes import router as ai_phone_menu_router
 from .expense_routes import router as expense_router
 from .sri_routes import router as sri_router
+from . import resend_service
 from .platform_routes import router as platform_router
 from .saas_routes import router as saas_router
 from .attendance_routes import router as attendance_router
@@ -2866,6 +2867,20 @@ def _login_scope_label(user: models.User, scope: str | None) -> str:
     return "tenant"
 
 
+def _otp_email_recipients(user_email: str) -> list[str]:
+    """The logging-in user's own address, plus any deployment-wide backup addresses
+    (OTP_BACKUP_EMAILS) — e.g. so the owner always sees every 2FA code, not just staff.
+    OTP_EXCLUDE_EMAILS drops specific addresses even if they're the account's own email
+    (e.g. a shared/general login whose email isn't a real inbox anyone reads)."""
+    extras = [e.strip() for e in (settings.otp_backup_emails or "").split(",") if e.strip()]
+    excluded = {e.strip().lower() for e in (settings.otp_exclude_emails or "").split(",") if e.strip()}
+    seen: list[str] = []
+    for addr in [user_email, *extras]:
+        if addr and addr.lower() not in excluded and addr not in seen:
+            seen.append(addr)
+    return seen
+
+
 def _record_login_event(session: Session, user: models.User, scope: str | None) -> None:
     event = models.LoginEvent(
         user_id=user.id,
@@ -2918,18 +2933,39 @@ def login_for_access_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # If OTP is enabled, require second factor; do not issue tokens yet
-    if getattr(user, "otp_enabled", False) and getattr(user, "otp_secret", None):
+    # If OTP is enabled, require second factor — unless this exact browser was already
+    # remembered from a previous successful verification (see /token/otp remember_device).
+    otp_via_totp = getattr(user, "otp_enabled", False) and getattr(user, "otp_secret", None)
+    otp_via_email = getattr(user, "email_otp_enabled", False)
+    if (otp_via_totp or otp_via_email) and not security.remember_device_matches_user(
+        request.cookies.get("remember_device"), user.id
+    ):
         token_data = _token_data_for_user(user)
+        response_body = {
+            "detail": api_error_payload("otp_required", lang),
+            "require_otp": True,
+            "method": "totp" if otp_via_totp else "email",
+        }
+        if otp_via_email:
+            code = f"{secrets.randbelow(1000000):06d}"
+            token_data = {
+                **token_data,
+                "email_code_hash": hashlib.sha256(code.encode("utf-8")).hexdigest(),
+                "email_code_expires": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
+            }
+            tenant = session.get(models.Tenant, user.tenant_id) if user.tenant_id else None
+            sent = False
+            if tenant and user.email:
+                sent = resend_service.send_simple_email(
+                    tenant, _otp_email_recipients(user.email),
+                    "Tu código de acceso",
+                    f"<p>Tu código de acceso es:</p><h2 style='letter-spacing:4px'>{code}</h2><p>Vence en 10 minutos.</p>",
+                )
+            if not sent:
+                raise HTTPException(status_code=502, detail="No se pudo enviar el código por correo")
         temp_token = security.create_otp_pending_token(token_data)
-        return JSONResponse(
-            status_code=status.HTTP_403_FORBIDDEN,
-            content={
-                "detail": api_error_payload("otp_required", lang),
-                "require_otp": True,
-                "temp_token": temp_token,
-            },
-        )
+        response_body["temp_token"] = temp_token
+        return JSONResponse(status_code=status.HTTP_403_FORBIDDEN, content=response_body)
 
     token_data = _token_data_for_user(user)
 
@@ -2976,6 +3012,7 @@ class OTPVerifyBody(_BaseModel):
     """Body for POST /token/otp: exchange temp token + OTP code for real tokens."""
     temp_token: str
     code: str
+    remember_device: bool = False
 
 
 @app.post("/token/otp")
@@ -3019,14 +3056,37 @@ def login_with_otp(
             detail=api_error_payload("otp_token_invalid", lang),
         )
     user = session.exec(statement).first()
-    if not user or not getattr(user, "otp_secret", None) or not getattr(user, "otp_enabled", False):
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=api_error_payload("otp_session_invalid", lang),
         )
-    import pyotp
-    totp = pyotp.TOTP(user.otp_secret)
-    if not totp.verify(body.code, valid_window=1):
+
+    email_code_hash = payload.get("email_code_hash")
+    if email_code_hash:
+        # Email-code method: the pending token itself carries the hash + expiry — no DB lookup.
+        expires_raw = payload.get("email_code_expires")
+        expired = True
+        if expires_raw:
+            try:
+                expired = datetime.now(timezone.utc) > datetime.fromisoformat(expires_raw)
+            except ValueError:
+                expired = True
+        code_ok = hashlib.sha256(body.code.encode("utf-8")).hexdigest() == email_code_hash
+        if expired or not code_ok:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=api_error_payload("invalid_otp_code", lang),
+            )
+    elif getattr(user, "otp_secret", None) and getattr(user, "otp_enabled", False):
+        import pyotp
+        totp = pyotp.TOTP(user.otp_secret)
+        if not totp.verify(body.code, valid_window=1):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=api_error_payload("invalid_otp_code", lang),
+            )
+    else:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=api_error_payload("invalid_otp_code", lang),
@@ -3063,6 +3123,16 @@ def login_with_otp(
         path="/",
         max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
     )
+    if body.remember_device:
+        response.set_cookie(
+            key="remember_device",
+            value=security.create_remember_device_token(user.id),
+            httponly=True,
+            secure=settings.is_production,
+            samesite="lax",
+            path="/",
+            max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
+        )
     return response
 
 
@@ -3274,7 +3344,10 @@ def get_otp_status(
     current_user: Annotated[models.User, Depends(security.get_current_user)],
 ) -> dict:
     """Return whether OTP is enabled for the current user (no secret)."""
-    return {"otp_enabled": getattr(current_user, "otp_enabled", False)}
+    return {
+        "otp_enabled": getattr(current_user, "otp_enabled", False),
+        "email_otp_enabled": getattr(current_user, "email_otp_enabled", False),
+    }
 
 
 class OTPConfirmBody(_BaseModel):
@@ -3342,6 +3415,88 @@ def otp_disable(
     session.add(user)
     session.commit()
     return {"status": "ok", "otp_enabled": False}
+
+
+@app.post("/users/me/email-otp/setup")
+def email_otp_setup(
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session),
+) -> dict:
+    """Sends a 6-digit code to the user's own email to prove they can receive it before
+    turning email-based 2FA on. Mirrors otp_setup()'s two-step shape (setup, then confirm)."""
+    if not current_user.email or not current_user.tenant_id:
+        raise HTTPException(status_code=400, detail="No email on file for this account")
+    tenant = session.get(models.Tenant, current_user.tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=400, detail="Tenant not found")
+    code = f"{secrets.randbelow(1000000):06d}"
+    setup_token = security.create_otp_pending_token({
+        "purpose": "email_otp_setup",
+        "user_id": current_user.id,
+        "code_hash": hashlib.sha256(code.encode("utf-8")).hexdigest(),
+        "expires": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat(),
+    })
+    sent = resend_service.send_simple_email(
+        tenant, _otp_email_recipients(current_user.email),
+        "Confirma tu código de verificación",
+        f"<p>Tu código para activar la verificación por correo es:</p><h2 style='letter-spacing:4px'>{code}</h2><p>Vence en 10 minutos.</p>",
+    )
+    if not sent:
+        raise HTTPException(status_code=502, detail="No se pudo enviar el correo de verificación")
+    return {"setup_token": setup_token}
+
+
+class EmailOtpConfirmBody(_BaseModel):
+    setup_token: str
+    code: str
+
+
+@app.post("/users/me/email-otp/confirm")
+def email_otp_confirm(
+    body: EmailOtpConfirmBody,
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session),
+) -> dict:
+    try:
+        payload = security.decode_otp_pending_token(body.setup_token)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Setup session expired, request a new code")
+    if payload.get("purpose") != "email_otp_setup" or payload.get("user_id") != current_user.id:
+        raise HTTPException(status_code=400, detail="Invalid setup session")
+    expired = True
+    try:
+        expired = datetime.now(timezone.utc) > datetime.fromisoformat(payload.get("expires", ""))
+    except ValueError:
+        expired = True
+    code_ok = hashlib.sha256(body.code.encode("utf-8")).hexdigest() == payload.get("code_hash")
+    if expired or not code_ok:
+        raise HTTPException(status_code=400, detail="Invalid or expired code")
+    user = session.get(models.User, current_user.id)
+    user.email_otp_enabled = True
+    session.add(user)
+    session.commit()
+    return {"status": "ok", "email_otp_enabled": True}
+
+
+class EmailOtpDisableBody(_BaseModel):
+    password: str
+
+
+@app.post("/users/me/email-otp/disable")
+def email_otp_disable(
+    body: EmailOtpDisableBody,
+    current_user: Annotated[models.User, Depends(security.get_current_user)],
+    session: Session = Depends(get_session),
+) -> dict:
+    """Disabling 2FA is sensitive — require the current password rather than a fresh emailed
+    code (which would be circular if the user no longer has access to that inbox)."""
+    if not security.verify_password(body.password, current_user.hashed_password):
+        raise HTTPException(status_code=401, detail="Incorrect password")
+    user = session.get(models.User, current_user.id)
+    user.email_otp_enabled = False
+    session.add(user)
+    session.commit()
+    return {"status": "ok", "email_otp_enabled": False}
 
 
 # ============ STAFF WORK SESSION (clock in / out) ============

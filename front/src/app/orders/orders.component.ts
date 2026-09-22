@@ -18,7 +18,6 @@ import {
   Tax,
   User,
   OrderDeliveryUpdate,
-  AiPhoneOrderDraft,
 } from '../services/api.service';
 import { AudioService } from '../services/audio.service';
 import { WaiterAlertService, WaiterAlertItem } from '../services/waiter-alert.service';
@@ -108,31 +107,13 @@ ModuleRegistry.registerModules([
                   <span class="tab-badge">{{ activeOrders().length }}</span>
                 }
               </button>
-              <button 
-                class="filter-tab" 
-                [class.active]="viewMode() === 'not_paid'"
-                (click)="viewMode.set('not_paid')">
-                {{ 'ORDERS.NOT_PAID_YET' | translate }}
-                @if (notPaidOrders().length > 0) {
-                  <span class="tab-badge">{{ notPaidOrders().length }}</span>
-                }
-              </button>
-              <button 
-                class="filter-tab" 
+              <button
+                class="filter-tab"
                 [class.active]="viewMode() === 'history'"
                 (click)="viewMode.set('history')">
                 {{ 'ORDERS.ORDER_HISTORY' | translate }}
                 @if (completedOrders().length > 0) {
                   <span class="tab-badge">{{ completedOrders().length }}</span>
-                }
-              </button>
-              <button
-                class="filter-tab"
-                [class.active]="viewMode() === 'delivery'"
-                (click)="viewMode.set('delivery')">
-                {{ 'ORDERS.DELIVERY_TAB' | translate }}
-                @if (deliveryOrders().length > 0) {
-                  <span class="tab-badge">{{ deliveryOrders().length }}</span>
                 }
               </button>
               @if (viewMode() === 'active') {
@@ -179,6 +160,9 @@ ModuleRegistry.registerModules([
                         }
                         @if (order.staff_urgent) {
                           <span class="order-urgent-badge">{{ 'ORDERS.URGENT_BADGE' | translate }}</span>
+                        }
+                        @if (order.status === 'completed' && !order.paid_at) {
+                          <span class="order-unpaid-badge" data-testid="order-unpaid-badge">{{ 'ORDERS.UNPAID_BADGE' | translate }}</span>
                         }
                         @if (order.hub_fulfillment?.status === 'prepared_at_hq') {
                           <span class="order-hub-badge prepared" data-testid="hub-prepared-badge">{{ 'ORDERS.HUB_PREPARED_BADGE' | translate }}</span>
@@ -483,7 +467,7 @@ ModuleRegistry.registerModules([
                   </div>
                 }
               </div>
-            } @else if (viewMode() === 'active' && activeOrders().length === 0 && notPaidOrders().length === 0) {
+            } @else if (viewMode() === 'active' && activeOrders().length === 0) {
               <div class="empty-state">
                 <div class="empty-icon">
                   <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -494,479 +478,6 @@ ModuleRegistry.registerModules([
                 <h3>{{ 'ORDERS.NO_ORDERS' | translate }}</h3>
                 <p>{{ 'ORDERS.NO_ORDERS_DESC' | translate }}</p>
               </div>
-            }
-
-            <!-- Not Paid Yet Section -->
-            @if (viewMode() === 'not_paid') {
-              @if (notPaidOrders().length > 0) {
-                <div class="order-grid">
-                  @for (order of notPaidOrders(); track order.id) {
-                    <div class="order-card" [id]="'order-card-' + order.id" [class]="'status-' + order.status + (orderCardHasOpenStatusDropdown(order.id) ? ' status-dropdown-open' : '')">
-                      @if (isSatisfechoDelivery(order) && canUpdateStatus() && order.status !== 'cancelled') {
-                        <button type="button" class="btn-edit-corner" (click)="openEditDeliveryModal(order)" [title]="'ORDERS.EDIT_DELIVERY' | translate">
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                          </svg>
-                        </button>
-                      }
-                      @if (canUpdateStatus() && order.status !== 'cancelled' && order.status !== 'paid' && order.status !== 'completed') {
-                        <button type="button" class="btn-cancel-corner" (click)="cancelOrder(order)" [title]="'ORDERS.CANCEL_ORDER' | translate">
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-                            <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
-                          </svg>
-                        </button>
-                      }
-                      <div class="order-header">
-                        <div class="order-header-main">
-                          <span class="order-id">#{{ order.id }}</span>
-                          <span class="order-table">{{ order.table_name }}</span>
-                          @if (orderChannelBadgeKey(order); as channelKey) {
-                            <span class="order-channel-badge" [class.marketplace]="isMarketplaceDelivery(order)">{{ channelKey | translate }}</span>
-                          }
-                          @if (order.table_group_label) {
-                            <span class="order-table-group">{{ order.table_group_label }}</span>
-                          }
-                          @if (order.customer_name) {
-                            <span class="order-customer">{{ 'ORDERS.CUSTOMER' | translate }}: {{ order.customer_name }}</span>
-                          }
-                          @if (order.staff_urgent) {
-                            <span class="order-urgent-badge">{{ 'ORDERS.URGENT_BADGE' | translate }}</span>
-                          }
-                          @if (order.hub_fulfillment?.status === 'prepared_at_hq') {
-                            <span class="order-hub-badge prepared" data-testid="hub-prepared-badge">{{ 'ORDERS.HUB_PREPARED_BADGE' | translate }}</span>
-                          } @else if (order.hub_fulfillment) {
-                            <span class="order-hub-badge" data-testid="hub-fulfillment-badge">{{ hubFulfillmentLabel(order.hub_fulfillment.status) | translate }}</span>
-                          }
-                          <span class="order-time" [title]="formatExactTime(order.created_at)">{{ 'ORDERS.ORDER_TIME' | translate }}: {{ formatOrderTime(order.created_at) }}</span>
-                        </div>
-                      </div>
-
-                      @if (isDeliveryChannel(order)) {
-                        <div class="order-delivery-meta">
-                          @if (order.delivery_address) {
-                            <div>{{ 'ORDERS.DELIVERY_ADDRESS' | translate }}: {{ order.delivery_address }}</div>
-                          }
-                          @if (order.customer_phone) {
-                            <div>{{ 'ORDERS.DELIVERY_PHONE' | translate }}: {{ order.customer_phone }}</div>
-                          }
-                          @if (isSatisfechoDelivery(order)) {
-                            <div>{{ 'ORDERS.COURIER' | translate }}: {{ courierDisplayName(order.courier_user_id) }}</div>
-                          }
-                        </div>
-                      }
-
-                      <div class="order-items">
-                        @for (item of getSortedItems(order.items); track item.id) {
-                          <div class="order-item" [class.removed]="item.removed_by_customer">
-                            <div class="item-name-row">
-                              <span class="item-qty">
-                                @if (!item.removed_by_customer && item.status !== 'cancelled' && item.status !== 'delivered') {
-                                  <input type="number"
-                                    [value]="item.quantity"
-                                    (change)="updateItemQuantity(order.id, item.id!, +$any($event.target).value)"
-                                    min="1"
-                                    class="quantity-input"
-                                  />
-                                } @else {
-                                  {{ item.quantity }}x
-                                }
-                              </span>
-                              <span class="item-name">{{ item.product_name }}</span>
-                              @if (hasItemModifiersLine(item)) {
-                                <span class="item-customization">{{ formatItemModifiersLine(item) }}</span>
-                              }
-                              @if (item.notes?.trim()) {
-                                <span class="item-notes">{{ item.notes }}</span>
-                              }
-                            </div>
-                            <div class="item-details-row">
-                              <span class="item-price">
-                                {{ formatPrice(item.price_cents) }}
-                                @if (item.quantity > 1) {
-                                  <span class="price-total">({{ formatPrice(item.price_cents * item.quantity) }} total)</span>
-                                }
-                              </span>
-                              <div class="item-actions">
-                                @if (!item.removed_by_customer && item.status !== 'cancelled') {
-                                  <button class="btn-remove-item" (click)="removeItemStaff(order.id, item.id!, item.status ?? 'pending')" [title]="'ORDERS.REMOVE_ITEM' | translate">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                      <path d="M18 6L6 18M6 6l12 12"/>
-                                    </svg>
-                                  </button>
-                                }
-                                @if (item.status && !item.removed_by_customer) {
-                                  <div class="item-status-control">
-                                    <button
-                                      class="item-status-badge clickable"
-                                      [class]="'status-' + item.status"
-                                      (click)="toggleItemStatusDropdown(order.id, item.id!)"
-                                      [title]="'ORDERS.CLICK_TO_CHANGE_STATUS' | translate">
-                                      {{ getItemStatusLabel(item.status) }}
-                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <polyline points="6,9 12,15 18,9"/>
-                                      </svg>
-                                    </button>
-                                    @if (itemStatusDropdownOpen() === order.id + '-' + item.id) {
-                                      <div class="status-dropdown item-status-dropdown" (click)="$event.stopPropagation()">
-                                        @if (getItemStatusTransitions(item.status).backward.length > 0) {
-                                          <div class="dropdown-section">
-                                            <div class="dropdown-label">{{ 'ORDERS.GO_BACK' | translate }}</div>
-                                            @for (status of getItemStatusTransitions(item.status).backward; track status) {
-                                              <button
-                                                class="dropdown-item backward"
-                                                (click)="updateItemStatus(order.id, item.id!, status); itemStatusDropdownOpen.set(null)">
-                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                  <polyline points="15,18 9,12 15,6"/>
-                                                </svg>
-                                                {{ getItemStatusLabel(status) }}
-                                              </button>
-                                            }
-                                          </div>
-                                        }
-                                        @if (getItemStatusTransitions(item.status).forward.length > 0) {
-                                          <div class="dropdown-section">
-                                            <div class="dropdown-label">{{ 'ORDERS.MOVE_FORWARD' | translate }}</div>
-                                            @for (status of getItemStatusTransitions(item.status).forward; track status) {
-                                              <button
-                                                class="dropdown-item forward"
-                                                (click)="updateItemStatus(order.id, item.id!, status); itemStatusDropdownOpen.set(null)">
-                                                {{ getItemStatusLabel(status) }}
-                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                  <polyline points="9,18 15,12 9,6"/>
-                                                </svg>
-                                              </button>
-                                            }
-                                          </div>
-                                        }
-                                      </div>
-                                    }
-                                  </div>
-                                }
-                              </div>
-                            </div>
-                            @if (item.removed_by_customer) {
-                              <div class="removed-indicator">
-                                <span class="removed-label">{{ 'ORDERS.REMOVED_BY_CUSTOMER' | translate }}</span>
-                                @if (item.removed_at) {
-                                  <span class="removed-time">{{ formatTime(item.removed_at) }}</span>
-                                }
-                              </div>
-                            }
-                          </div>
-                        }
-                      </div>
-
-                      <div class="order-footer">
-                        <div class="order-footer-left">
-                          <span class="order-total">{{ 'ORDERS.TOTAL' | translate }}: {{ formatPrice(order.total_cents) }}</span>
-                          @if (order.removed_items_count && order.removed_items_count > 0) {
-                            <span class="removed-count">{{ 'ORDERS.ITEMS_REMOVED' | translate:{ count: order.removed_items_count } }}</span>
-                          }
-                        </div>
-                        <div class="order-actions">
-                          @if (canUpdateStatus() && order.status !== 'cancelled') {
-                            <button type="button" class="btn btn-urgent" (click)="toggleStaffUrgent(order, $event)">
-                              {{ order.staff_urgent ? ('ORDERS.CLEAR_URGENT' | translate) : ('ORDERS.MARK_URGENT' | translate) }}
-                            </button>
-                          }
-                          @if (canUpdateStatus() && order.can_request_hub_fulfillment && order.status !== 'cancelled' && order.status !== 'paid') {
-                            <button
-                              type="button"
-                              class="btn btn-secondary"
-                              data-testid="request-hub-fulfillment"
-                              (click)="requestHubFulfillment(order)"
-                            >
-                              {{ 'ORDERS.REQUEST_HQ_PREP' | translate }}
-                            </button>
-                          }
-                          <button type="button" class="btn btn-edit-order" (click)="openOrderEdit(order)" [title]="'ORDERS.EDIT_ORDER' | translate">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                            </svg>
-                            {{ 'COMMON.EDIT' | translate }}
-                          </button>
-                          @if (sriInvoicingEnabled() && order.status !== 'cancelled') {
-                            <button type="button" class="btn btn-secondary" (click)="openOrderEdit(order)" [disabled]="order.sri_comprobante?.estado === 'AUT'">
-                              {{ order.sri_comprobante?.estado === 'AUT' ? ('ORDERS.INVOICED_LABEL' | translate) : ('ORDERS.INVOICE_SHORT' | translate) }}
-                            </button>
-                          }
-                          @if (order.status !== 'paid' && order.status !== 'cancelled' && canMarkPaid()) {
-                            <button
-                              type="button"
-                              class="btn"
-                              [class.btn-secondary]="canFinishOrder()"
-                              [class.btn-primary]="!canFinishOrder()"
-                              (click)="markAsPaid(order)"
-                              [title]="'ORDERS.PAY_NOW_HINT' | translate">
-                              {{ 'ORDERS.PAY_NOW' | translate }}
-                            </button>
-                          }
-                          @if (order.status !== 'paid' && order.status !== 'cancelled' && order.status !== 'completed' && canFinishOrder()) {
-                            <button type="button" class="btn btn-success" (click)="openFinishPaymentModal(order)" [title]="'ORDERS.FINISH_ORDER_MENU' | translate">
-                              {{ 'ORDERS.FINISH_ORDER' | translate }}
-                            </button>
-                          }
-                          @if (order.status === 'paid' && canFinishOrder()) {
-                            <button type="button" class="btn btn-success" (click)="completeOrder(order)">Completar pedido</button>
-                          }
-                          <div class="status-control">
-                            <button
-                              class="status-badge-btn"
-                              [class]="order.status"
-                              (click)="toggleStatusDropdown(order.id)"
-                              [title]="'ORDERS.CLICK_TO_CHANGE_STATUS' | translate">
-                              {{ getStatusLabel(order.status) }}
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <polyline points="6,9 12,15 18,9"/>
-                              </svg>
-                            </button>
-                            @if (statusDropdownOpen() === order.id) {
-                              <div class="status-dropdown" (click)="$event.stopPropagation()">
-                                @if (getOrderStatusTransitions(order.status).backward.length > 0) {
-                                  <div class="dropdown-section">
-                                    <div class="dropdown-label">{{ 'ORDERS.GO_BACK' | translate }}</div>
-                                    @for (status of getOrderStatusTransitions(order.status).backward; track status) {
-                                      <button
-                                        class="dropdown-item backward"
-                                        (click)="updateStatus(order, status)">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                          <polyline points="15,18 9,12 15,6"/>
-                                        </svg>
-                                        {{ getStatusLabel(status) }}
-                                      </button>
-                                    }
-                                  </div>
-                                }
-                                @if (getOrderStatusTransitions(order.status).forward.length > 0) {
-                                  <div class="dropdown-section">
-                                    <div class="dropdown-label">{{ 'ORDERS.MOVE_FORWARD' | translate }}</div>
-                                    @for (status of getOrderStatusTransitions(order.status).forward; track status) {
-                                      <button
-                                        class="dropdown-item forward"
-                                        (click)="updateStatus(order, status)">
-                                        {{ getStatusLabel(status) }}
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                          <polyline points="9,18 15,12 9,6"/>
-                                        </svg>
-                                      </button>
-                                    }
-                                  </div>
-                                }
-                                @if (order.status !== 'paid' && order.status !== 'cancelled' && canMarkPaid()) {
-                                  <div class="dropdown-section">
-                                    <button
-                                      class="dropdown-item forward"
-                                      (click)="markAsPaid(order); statusDropdownOpen.set(null)">
-                                      {{ 'ORDERS.MARK_AS_PAID' | translate }}
-                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <polyline points="9,18 15,12 9,6"/>
-                                      </svg>
-                                    </button>
-                                  </div>
-                                }
-                                @if (order.status !== 'paid' && order.status !== 'cancelled' && order.status !== 'completed' && canFinishOrder()) {
-                                  <div class="dropdown-section">
-                                    <button
-                                      class="dropdown-item forward"
-                                      (click)="openFinishPaymentModal(order); statusDropdownOpen.set(null)">
-                                      {{ 'ORDERS.FINISH_ORDER_MENU' | translate }}
-                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <polyline points="9,18 15,12 9,6"/>
-                                      </svg>
-                                    </button>
-                                  </div>
-                                }
-                                @if (order.status === 'paid' && canMarkPaid()) {
-                                  <div class="dropdown-section">
-                                    <button
-                                      class="dropdown-item forward"
-                                      (click)="completeOrder(order)">
-                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <polyline points="20,6 9,17 4,12"/>
-                                      </svg>
-                                      Completar pedido
-                                    </button>
-                                    <button
-                                      class="dropdown-item backward"
-                                      (click)="unmarkPaid(order)">
-                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <polyline points="15,18 9,12 15,6"/>
-                                      </svg>
-                                      {{ 'ORDERS.UNMARK_PAID' | translate }}
-                                    </button>
-                                  </div>
-                                }
-                                @if (canDeleteOrder()) {
-                                  <div class="dropdown-section">
-                                    <button
-                                      class="dropdown-item danger"
-                                      (click)="deleteOrder(order)">
-                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-                                        <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
-                                      </svg>
-                                      {{ 'ORDERS.DELETE_ORDER' | translate }}
-                                    </button>
-                                  </div>
-                                }
-                              </div>
-                            }
-                          </div>
-                          @if (order.table_id != null && order.table_token) {
-                            <button type="button" class="btn btn-menu-link" (click)="openMenuForOrder(order)" [title]="'ORDERS.OPEN_MENU_LINK' | translate">
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M18 13v6a2 2 0 01-2 2H8a2 2 0 01-2-2v-6"/><polyline points="15 3 21 3 21 9"/><polyline points="9 15 3 15 3 21"/>
-                              </svg>
-                              {{ 'ORDERS.OPEN_MENU' | translate }}
-                            </button>
-                          }
-                          <button type="button" class="btn btn-print" (click)="openFacturaModal(order)" [title]="'CUSTOMERS.PRINT_FACTURA' | translate">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                              <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/>
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  }
-                </div>
-              } @else {
-                <div class="empty-state">
-                  <div class="empty-icon">
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                      <path d="M9 12l2 2 4-4M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9 9 4.03 9 9z"/>
-                    </svg>
-                  </div>
-                  <h3>{{ 'ORDERS.ALL_ORDERS_PAID' | translate }}</h3>
-                  <p>{{ 'ORDERS.NO_UNPAID_ORDERS' | translate }}</p>
-                </div>
-              }
-            }
-
-            <!-- Delivery Orders Section -->
-            @if (viewMode() === 'delivery') {
-              @if (deliveryOrders().length > 0) {
-                <div class="order-grid">
-                  @for (order of deliveryOrders(); track order.id) {
-                    <div class="order-card" [id]="'order-card-' + order.id" [class]="'status-' + order.status + (orderCardHasOpenStatusDropdown(order.id) ? ' status-dropdown-open' : '')">
-                      @if (isSatisfechoDelivery(order) && canUpdateStatus() && order.status !== 'cancelled') {
-                        <button type="button" class="btn-edit-corner" (click)="openEditDeliveryModal(order)" [title]="'ORDERS.EDIT_DELIVERY' | translate">
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                          </svg>
-                        </button>
-                      }
-                      @if (canUpdateStatus() && order.status !== 'cancelled' && order.status !== 'paid' && order.status !== 'completed') {
-                        <button type="button" class="btn-cancel-corner" (click)="cancelOrder(order)" [title]="'ORDERS.CANCEL_ORDER' | translate">
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-                            <line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
-                          </svg>
-                        </button>
-                      }
-                      <div class="order-header">
-                        <div class="order-header-main">
-                          <span class="order-id">#{{ order.id }}</span>
-                          <span class="order-table">{{ order.table_name }}</span>
-                          @if (orderChannelBadgeKey(order); as channelKey) {
-                            <span class="order-channel-badge" [class.marketplace]="isMarketplaceDelivery(order)">{{ channelKey | translate }}</span>
-                          }
-                          @if (order.customer_name) {
-                            <span class="order-customer">{{ 'ORDERS.CUSTOMER' | translate }}: {{ order.customer_name }}</span>
-                          }
-                          @if (order.staff_urgent) {
-                            <span class="order-urgent-badge">{{ 'ORDERS.URGENT_BADGE' | translate }}</span>
-                          }
-                          @if (order.hub_fulfillment?.status === 'prepared_at_hq') {
-                            <span class="order-hub-badge prepared" data-testid="hub-prepared-badge">{{ 'ORDERS.HUB_PREPARED_BADGE' | translate }}</span>
-                          } @else if (order.hub_fulfillment) {
-                            <span class="order-hub-badge" data-testid="hub-fulfillment-badge">{{ hubFulfillmentLabel(order.hub_fulfillment.status) | translate }}</span>
-                          }
-                          <span class="order-time" [title]="formatExactTime(order.created_at)">{{ 'ORDERS.ORDER_TIME' | translate }}: {{ formatOrderTime(order.created_at) }}</span>
-                        </div>
-                      </div>
-                      <div class="order-delivery-meta">
-                        @if (order.delivery_address) {
-                          <div>{{ 'ORDERS.DELIVERY_ADDRESS' | translate }}: {{ order.delivery_address }}</div>
-                        }
-                        @if (order.customer_phone) {
-                          <div>{{ 'ORDERS.DELIVERY_PHONE' | translate }}: {{ order.customer_phone }}</div>
-                        }
-                        @if (isSatisfechoDelivery(order)) {
-                          <div>{{ 'ORDERS.COURIER' | translate }}: {{ courierDisplayName(order.courier_user_id) }}</div>
-                        }
-                        @if (isMarketplaceDelivery(order) && order.external_order_ref) {
-                          <div>{{ 'ORDERS.MARKETPLACE_REF' | translate }}: {{ order.external_order_ref }}</div>
-                        }
-                      </div>
-                      <div class="order-items">
-                        @for (item of getSortedItems(order.items); track item.id) {
-                          <div class="order-item" [class.removed]="item.removed_by_customer">
-                            <div class="item-name-row">
-                              <span class="item-qty">{{ item.quantity }}x</span>
-                              <span class="item-name">{{ item.product_name }}</span>
-                              @if (item.notes?.trim()) {
-                                <span class="item-notes">{{ item.notes }}</span>
-                              }
-                            </div>
-                            <div class="item-details-row">
-                              <span class="item-price">{{ formatPrice(item.price_cents) }}</span>
-                              @if (item.status) {
-                                <span class="item-status-badge" [class]="'status-' + item.status">{{ getItemStatusLabel(item.status) }}</span>
-                              }
-                            </div>
-                          </div>
-                        }
-                      </div>
-                      @if (displayOrderNotes(order.notes)) {
-                        <div class="order-notes-banner">{{ 'ORDERS.ORDER_NOTES' | translate }}: {{ displayOrderNotes(order.notes) }}</div>
-                      }
-                      <div class="order-footer">
-                        <div class="order-footer-left">
-                          <span class="order-total">{{ 'ORDERS.TOTAL' | translate }}: {{ formatPrice(order.total_cents) }}</span>
-                        </div>
-                        <div class="order-actions">
-                          <button type="button" class="btn btn-edit-order" (click)="openOrderEdit(order)" [title]="'ORDERS.EDIT_ORDER' | translate">
-                            {{ 'COMMON.EDIT' | translate }}
-                          </button>
-                          @if (sriInvoicingEnabled() && order.status !== 'cancelled') {
-                            <button type="button" class="btn btn-secondary" (click)="openOrderEdit(order)" [disabled]="order.sri_comprobante?.estado === 'AUT'">
-                              {{ order.sri_comprobante?.estado === 'AUT' ? ('ORDERS.INVOICED_LABEL' | translate) : ('ORDERS.INVOICE_SHORT' | translate) }}
-                            </button>
-                          }
-                          @if (order.status !== 'paid' && order.status !== 'cancelled' && canMarkPaid()) {
-                            <button type="button" class="btn btn-primary" (click)="markAsPaid(order)">{{ 'ORDERS.PAY_NOW' | translate }}</button>
-                          }
-                          @if (order.status !== 'paid' && order.status !== 'cancelled' && order.status !== 'completed' && canFinishOrder()) {
-                            <button type="button" class="btn btn-success" (click)="openFinishPaymentModal(order)">{{ 'ORDERS.FINISH_ORDER' | translate }}</button>
-                          }
-                          @if (order.status === 'paid' && canFinishOrder()) {
-                            <button type="button" class="btn btn-success" (click)="completeOrder(order)">Completar pedido</button>
-                          }
-                        </div>
-                      </div>
-                    </div>
-                  }
-                </div>
-              } @else {
-                <div class="empty-state">
-                  <div class="empty-icon">
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
-                      <polyline points="9 22 9 12 15 12 15 22"/>
-                    </svg>
-                  </div>
-                  <h3>{{ 'ORDERS.NO_DELIVERY_ORDERS' | translate }}</h3>
-                  <p>{{ 'ORDERS.NO_DELIVERY_ORDERS_DESC' | translate }}</p>
-                  @if (canUpdateStatus()) {
-                    <button type="button" class="btn btn-primary" (click)="openCreateDeliveryModal()">{{ 'ORDERS.NEW_DELIVERY_ORDER' | translate }}</button>
-                  }
-                </div>
-              }
             }
 
             <!-- Order History Section (AG Grid) - only when History tab is selected -->
@@ -1004,6 +515,9 @@ ModuleRegistry.registerModules([
                 </label>
                 <button type="button" class="btn btn-primary btn-sm" (click)="applyHistoryDateFilter()" [disabled]="historyFilterLoading() || (!historyDateFrom() && !historyDateTo())">
                   {{ historyFilterLoading() ? ('COMMON.LOADING' | translate) : ('ORDERS.HISTORY_FILTER_APPLY' | translate) }}
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm" (click)="applyHistoryTodayFilter()" [disabled]="historyFilterLoading()">
+                  {{ 'ORDERS.HISTORY_FILTER_TODAY' | translate }}
                 </button>
                 @if (historyFilterActive()) {
                   <button type="button" class="btn btn-secondary btn-sm" (click)="clearHistoryDateFilter()">{{ 'ORDERS.HISTORY_FILTER_CLEAR' | translate }}</button>
@@ -1940,105 +1454,8 @@ ModuleRegistry.registerModules([
           </div>
         }
 
-        <!-- AI phone orders: floating pending-review button -->
-        @if (canManageAiPhoneOrders()) {
-          <button type="button" class="ai-phone-fab" (click)="openAiPhoneOrdersModal()">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 3 5.18 2 2 0 0 1 5 3h3a2 2 0 0 1 2 1.72c.13.81.36 1.61.68 2.36a2 2 0 0 1-.45 2.11L8.91 10.5a16 16 0 0 0 6.59 6.59l1.31-1.32a2 2 0 0 1 2.11-.45c.75.32 1.55.55 2.36.68A2 2 0 0 1 22 16.92z"/>
-            </svg>
-            <span>{{ 'ORDERS.AI_PHONE_BUTTON' | translate }}</span>
-            @if (aiPhoneOrderPendingCount() > 0) {
-              <span class="ai-phone-fab-badge">{{ aiPhoneOrderPendingCount() }}</span>
-            }
-          </button>
-        }
-
-        @if (aiPhoneOrdersModalOpen()) {
-          <div class="modal-overlay" style="z-index: 1150;" (click)="closeAiPhoneOrdersModal()">
-            <div class="modal modal-lg ai-phone-modal" (click)="$event.stopPropagation()">
-              <div class="modal-header">
-                <h3>{{ 'ORDERS.AI_PHONE_TITLE' | translate }}</h3>
-                <button class="icon-btn" (click)="closeAiPhoneOrdersModal()">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M18 6L6 18M6 6l12 12"/>
-                  </svg>
-                </button>
-              </div>
-
-              <div class="ai-phone-new-sim">
-                <label>{{ 'ORDERS.AI_PHONE_NEW_SIMULATION' | translate }}</label>
-                <div class="ai-phone-new-sim-row">
-                  <input type="text" [(ngModel)]="aiPhoneOrderNewLabel" [placeholder]="'ORDERS.AI_PHONE_PHONE_LABEL' | translate" />
-                  <button type="button" class="btn btn-secondary" [disabled]="aiPhoneOrderStartingSimulation()" (click)="startAiPhoneOrderSimulation()">
-                    {{ 'ORDERS.AI_PHONE_START_SIMULATION' | translate }}
-                  </button>
-                </div>
-              </div>
-
-              @if (aiPhoneOrders().length === 0) {
-                <p class="ai-phone-empty">{{ 'ORDERS.AI_PHONE_EMPTY' | translate }}</p>
-              } @else {
-                <div class="ai-phone-draft-list">
-                  @for (draft of aiPhoneOrders(); track draft.id) {
-                    <div class="ai-phone-draft-card">
-                      <div class="ai-phone-draft-header">
-                        <strong>{{ draft.phone_label }}</strong>
-                        <span class="ai-phone-status-badge" [class]="draft.status">{{ aiPhoneOrderStatusLabel(draft.status) }}</span>
-                      </div>
-
-                      @if (draft.items.length === 0) {
-                        <p class="ai-phone-empty-items">{{ 'ORDERS.AI_PHONE_EMPTY_ITEMS' | translate }}</p>
-                      } @else {
-                        <ul class="ai-phone-items">
-                          @for (it of draft.items; track $index) {
-                            <li>
-                              <span>{{ it.quantity }}× {{ it.product_name }}</span>
-                              <span>{{ formatPrice(it.price_cents * it.quantity) }}</span>
-                            </li>
-                          }
-                        </ul>
-                        <div class="ai-phone-total">
-                          <span>{{ 'ORDERS.AI_PHONE_TOTAL' | translate }}</span>
-                          <strong>{{ formatPrice(aiPhoneOrderDraftTotal(draft)) }}</strong>
-                        </div>
-                      }
-
-                      @if (draft.customer_note) {
-                        <p class="ai-phone-note"><em>{{ 'ORDERS.AI_PHONE_CUSTOMER_NOTE' | translate }}:</em> {{ draft.customer_note }}</p>
-                      }
-
-                      @if (draft.status === 'in_progress') {
-                        @if (aiPhoneOrderLastReply[draft.id]) {
-                          <p class="ai-phone-reply">"{{ aiPhoneOrderLastReply[draft.id] }}"</p>
-                        }
-                        <div class="ai-phone-sim-input">
-                          <input type="text"
-                                 [(ngModel)]="aiPhoneOrderDraftMessages[draft.id]"
-                                 [placeholder]="'ORDERS.AI_PHONE_TYPE_MESSAGE' | translate"
-                                 (keyup.enter)="sendAiPhoneOrderSimMessage(draft)" />
-                          <button type="button" class="btn btn-secondary" [disabled]="aiPhoneOrderBusyId() === draft.id" (click)="sendAiPhoneOrderSimMessage(draft)">
-                            {{ 'ORDERS.AI_PHONE_SEND' | translate }}
-                          </button>
-                        </div>
-                      }
-
-                      @if (draft.status === 'pending_review') {
-                        <div class="ai-phone-review-actions">
-                          <button type="button" class="btn btn-secondary" [disabled]="aiPhoneOrderBusyId() === draft.id" (click)="confirmRejectAiPhoneOrder(draft)">
-                            {{ 'ORDERS.AI_PHONE_REJECT' | translate }}
-                          </button>
-                          <button type="button" class="btn btn-primary" [disabled]="aiPhoneOrderBusyId() === draft.id" (click)="acceptAiPhoneOrder(draft)">
-                            {{ 'ORDERS.AI_PHONE_ACCEPT' | translate }}
-                          </button>
-                        </div>
-                      }
-                    </div>
-                  }
-                </div>
-              }
-            </div>
-          </div>
-        }
+        <!-- AI phone orders: moved to its own page (/staff/phones-ai) with a sidebar badge
+             and a global toast (AiPhoneNotificationService), so it doesn't live here anymore. -->
 
         <!-- Waiter Alert Banner -->
         @if (waiterAlert()) {
@@ -2280,6 +1697,11 @@ ModuleRegistry.registerModules([
     .order-urgent-badge {
       font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
       color: #b91c1c; background: rgba(220, 38, 38, 0.1);
+      padding: 2px 8px; border-radius: 6px; width: fit-content;
+    }
+    .order-unpaid-badge {
+      font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+      color: #92400e; background: rgba(217, 119, 6, 0.12);
       padding: 2px 8px; border-radius: 6px; width: fit-content;
     }
     .order-hub-badge {
@@ -3403,7 +2825,6 @@ export class OrdersComponent implements OnInit, OnDestroy {
   canRemoveItem = computed(() => this.permissions.hasPermission(this.api.getCurrentUser(), 'order:remove_item'));
   canDeleteOrder = computed(() => this.permissions.hasPermission(this.api.getCurrentUser(), 'order:delete'));
   /** AI phone order draft creation/turns/accept/reject all require the same permission as changing order status. */
-  canManageAiPhoneOrders = computed(() => this.permissions.hasPermission(this.api.getCurrentUser(), 'order:update_status'));
 
   // Get browser's timezone automatically
   private getBrowserTimezone(): string {
@@ -3423,18 +2844,6 @@ export class OrdersComponent implements OnInit, OnDestroy {
   private tableScopeQuerySub?: Subscription;
   private toastTimeout?: ReturnType<typeof setTimeout>;
   private quantityDebounceTimeout?: ReturnType<typeof setTimeout>;
-  private aiPhoneOrderPollHandle?: ReturnType<typeof setInterval>;
-
-  // AI phone order module: floating "pending review" widget + simple simulated-call chat
-  // (real phone/Arduino hardware isn't wired up yet, so this doubles as the test harness).
-  aiPhoneOrdersModalOpen = signal(false);
-  aiPhoneOrders = signal<AiPhoneOrderDraft[]>([]);
-  aiPhoneOrderPendingCount = computed(() => this.aiPhoneOrders().filter(d => d.status === 'pending_review').length);
-  aiPhoneOrderBusyId = signal<number | null>(null);
-  aiPhoneOrderNewLabel = 'Teléfono 1';
-  aiPhoneOrderStartingSimulation = signal(false);
-  aiPhoneOrderDraftMessages: Record<number, string> = {};
-  aiPhoneOrderLastReply: Record<number, string> = {};
 
   orders = signal<Order[]>([]);
   /** When set (via `?table=` query), order lists show only this table's orders. */
@@ -3443,7 +2852,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   currency = signal<string>('$');
   currencyCode = signal<string | null>('USD');
   showRemovedItems = false;
-  viewMode = signal<'active' | 'not_paid' | 'history' | 'delivery'>('active');
+  viewMode = signal<'active' | 'history'>('active');
 
   /** Satisfecho Delivery create / edit forms */
   createDeliveryOpen = signal(false);
@@ -3592,6 +3001,9 @@ export class OrdersComponent implements OnInit, OnDestroy {
     const tid = this.tableScopeId();
     let list = this.orders().filter(o => {
       if (o.status === 'paid') return !this.isOrderFullyDelivered(o);
+      // Finished-but-unpaid orders stay here too (with a "Falta cobrar" badge) instead of a
+      // separate tab — the existing "Pagar" button already makes what's needed obvious.
+      if (o.status === 'completed') return !o.paid_at;
       return ['pending', 'preparing', 'ready', 'out_for_delivery', 'partially_delivered'].includes(o.status);
     });
     if (tid != null) list = list.filter(o => o.table_id === tid);
@@ -3666,6 +3078,14 @@ export class OrdersComponent implements OnInit, OnDestroy {
     });
   }
 
+  applyHistoryTodayFilter() {
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    this.historyDateFrom.set(today);
+    this.historyDateTo.set(today);
+    this.applyHistoryDateFilter();
+  }
+
   clearHistoryDateFilter() {
     this.historyDateFrom.set(null);
     this.historyDateTo.set(null);
@@ -3734,20 +3154,6 @@ export class OrdersComponent implements OnInit, OnDestroy {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
-  notPaidOrders = computed(() => {
-    const tid = this.tableScopeId();
-    let list = this.orders().filter(o => o.status === 'completed' && !o.paid_at);
-    if (tid != null) list = list.filter(o => o.table_id === tid);
-    return list;
-  });
-  /** Satisfecho Delivery + marketplace delivery orders still pending delivery (Delivery tab). Completed/cancelled ones live in History. */
-  deliveryOrders = computed(() => {
-    return this.orders().filter(o => {
-      if (!this.isDeliveryChannel(o)) return false;
-      if (o.status === 'paid') return !this.isOrderFullyDelivered(o);
-      return ['pending', 'preparing', 'ready', 'out_for_delivery', 'partially_delivered'].includes(o.status);
-    });
-  });
 
   // AG Grid configuration - custom light theme matching app colors
   gridTheme = themeQuartz.withParams({
@@ -4025,10 +3431,6 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.loadTenantSettings();
     this.ensureDeliveryLookups();
     this.loadOrders();
-    if (this.canManageAiPhoneOrders()) {
-      this.refreshAiPhoneOrders();
-      this.aiPhoneOrderPollHandle = setInterval(() => this.refreshAiPhoneOrders(), 8000);
-    }
     // Connect WebSocket for real-time updates (non-blocking - HTTP requests work without it)
     try {
       this.api.connectWebSocket();
@@ -4086,7 +3488,6 @@ export class OrdersComponent implements OnInit, OnDestroy {
   ngOnDestroy() {
     this.wsSub?.unsubscribe();
     this.tableScopeQuerySub?.unsubscribe();
-    if (this.aiPhoneOrderPollHandle) clearInterval(this.aiPhoneOrderPollHandle);
   }
 
   clearTableScope() {
@@ -4134,9 +3535,9 @@ export class OrdersComponent implements OnInit, OnDestroy {
     /** Resolve focus using full order list (ignore table scope filter). */
     const rawActive = this.orders().filter(o => {
       if (o.status === 'paid') return !this.isOrderFullyDelivered(o);
+      if (o.status === 'completed') return !o.paid_at;
       return ['pending', 'preparing', 'ready', 'out_for_delivery', 'partially_delivered'].includes(o.status);
     });
-    const rawNotPaid = this.orders().filter(o => o.status === 'completed' && !o.paid_at);
 
     let preserveTableId: number | null = null;
 
@@ -4153,7 +3554,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
       });
     };
 
-    let mode: 'active' | 'not_paid' | 'history' | null = null;
+    let mode: 'active' | 'history' | null = null;
     let scrollId: number | null = null;
     let openEdit: Order | null = null;
 
@@ -4166,9 +3567,6 @@ export class OrdersComponent implements OnInit, OnDestroy {
         if (rawActive.some(o => o.id === focusOrderId)) {
           mode = 'active';
           scrollId = focusOrderId;
-        } else if (rawNotPaid.some(o => o.id === focusOrderId)) {
-          mode = 'not_paid';
-          scrollId = focusOrderId;
         } else {
           mode = 'history';
           openEdit = order;
@@ -4179,27 +3577,25 @@ export class OrdersComponent implements OnInit, OnDestroy {
       const forTable = this.orders().filter(o => o.table_id === focusTableId);
       const activeStatuses = ['pending', 'preparing', 'ready', 'out_for_delivery', 'partially_delivered'];
       const activeForTable = forTable
-        .filter(o => o.status === 'paid' ? !this.isOrderFullyDelivered(o) : activeStatuses.includes(o.status))
+        .filter(o => {
+          if (o.status === 'paid') return !this.isOrderFullyDelivered(o);
+          if (o.status === 'completed') return !o.paid_at;
+          return activeStatuses.includes(o.status);
+        })
         .sort((a, b) => (b.staff_urgent ? 1 : 0) - (a.staff_urgent ? 1 : 0) || a.id - b.id);
       if (activeForTable.length > 0) {
         mode = 'active';
         scrollId = activeForTable[0].id;
       } else {
-        const notPaid = forTable.filter(o => o.status === 'completed' && !o.paid_at);
-        if (notPaid.length > 0) {
-          mode = 'not_paid';
-          scrollId = notPaid[0].id;
+        const hist = forTable
+          .filter(o => ['completed', 'cancelled', 'paid'].includes(o.status))
+          .sort((a, b) => b.id - a.id);
+        if (hist.length > 0) {
+          mode = 'history';
+          openEdit = hist[0];
         } else {
-          const hist = forTable
-            .filter(o => ['completed', 'cancelled', 'paid'].includes(o.status))
-            .sort((a, b) => b.id - a.id);
-          if (hist.length > 0) {
-            mode = 'history';
-            openEdit = hist[0];
-          } else {
-            this.showToast(this.translate.instant('ORDERS.FOCUS_TABLE_NO_ORDERS'), 'error');
-            mode = 'active';
-          }
+          this.showToast(this.translate.instant('ORDERS.FOCUS_TABLE_NO_ORDERS'), 'error');
+          mode = 'active';
         }
       }
     }
@@ -4415,7 +3811,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
       next: () => {
         this.creatingDelivery.set(false);
         this.forceCloseCreateDeliveryModal();
-        this.viewMode.set('delivery');
+        this.viewMode.set('active');
         this.loadOrders();
         this.showToast(this.translate.instant('ORDERS.DELIVERY_CREATED'), 'success');
       },
@@ -5030,109 +4426,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
     this.toast.set({ message, type });
   }
 
-  // --- AI phone orders (module: pending-review queue + simulated-call test harness) ---
-
-  refreshAiPhoneOrders(): void {
-    this.api.listAiPhoneOrders().subscribe({
-      next: (drafts) => this.aiPhoneOrders.set(drafts.filter(d => d.status === 'in_progress' || d.status === 'pending_review')),
-      error: () => {}, // silent — this is a background poll, don't spam toasts
-    });
-  }
-
-  openAiPhoneOrdersModal(): void {
-    this.refreshAiPhoneOrders();
-    this.aiPhoneOrdersModalOpen.set(true);
-  }
-
-  closeAiPhoneOrdersModal(): void {
-    this.aiPhoneOrdersModalOpen.set(false);
-  }
-
-  aiPhoneOrderStatusLabel(status: string): string {
-    switch (status) {
-      case 'in_progress': return this.translate.instant('ORDERS.AI_PHONE_STATUS_IN_PROGRESS');
-      case 'pending_review': return this.translate.instant('ORDERS.AI_PHONE_STATUS_PENDING_REVIEW');
-      case 'accepted': return this.translate.instant('ORDERS.AI_PHONE_STATUS_ACCEPTED');
-      case 'rejected': return this.translate.instant('ORDERS.AI_PHONE_STATUS_REJECTED');
-      default: return status;
-    }
-  }
-
-  startAiPhoneOrderSimulation(): void {
-    const label = (this.aiPhoneOrderNewLabel || 'Teléfono 1').trim() || 'Teléfono 1';
-    this.aiPhoneOrderStartingSimulation.set(true);
-    this.api.createAiPhoneOrder(label).subscribe({
-      next: (draft) => {
-        this.aiPhoneOrderStartingSimulation.set(false);
-        this.aiPhoneOrders.set([draft, ...this.aiPhoneOrders()]);
-      },
-      error: () => {
-        this.aiPhoneOrderStartingSimulation.set(false);
-        this.showToast(this.translate.instant('ORDERS.AI_PHONE_ERROR'), 'error');
-      },
-    });
-  }
-
-  sendAiPhoneOrderSimMessage(draft: AiPhoneOrderDraft): void {
-    const message = (this.aiPhoneOrderDraftMessages[draft.id] || '').trim();
-    if (!message || this.aiPhoneOrderBusyId() === draft.id) return;
-    this.aiPhoneOrderBusyId.set(draft.id);
-    this.api.advanceAiPhoneOrderTurn(draft.id, message).subscribe({
-      next: (result) => {
-        this.aiPhoneOrderBusyId.set(null);
-        this.aiPhoneOrderDraftMessages[draft.id] = '';
-        this.aiPhoneOrderLastReply[draft.id] = result.reply;
-        this.aiPhoneOrders.set(this.aiPhoneOrders().map(d => d.id === draft.id
-          ? { ...d, items: result.items, customer_note: result.customer_note, status: result.status as AiPhoneOrderDraft['status'] }
-          : d));
-      },
-      error: (err) => {
-        this.aiPhoneOrderBusyId.set(null);
-        const msg = err?.status === 400 && err?.error?.detail?.includes('PHONE_ORDER_AI_API_KEY')
-          ? this.translate.instant('ORDERS.AI_PHONE_NOT_CONFIGURED')
-          : this.translate.instant('ORDERS.AI_PHONE_ERROR');
-        this.showToast(msg, 'error');
-      },
-    });
-  }
-
-  acceptAiPhoneOrder(draft: AiPhoneOrderDraft): void {
-    if (this.aiPhoneOrderBusyId() === draft.id) return;
-    this.aiPhoneOrderBusyId.set(draft.id);
-    this.api.acceptAiPhoneOrder(draft.id).subscribe({
-      next: () => {
-        this.aiPhoneOrderBusyId.set(null);
-        this.aiPhoneOrders.set(this.aiPhoneOrders().filter(d => d.id !== draft.id));
-        this.showToast(this.translate.instant('ORDERS.AI_PHONE_ACCEPTED_TOAST'), 'success');
-        this.loadOrders();
-      },
-      error: () => {
-        this.aiPhoneOrderBusyId.set(null);
-        this.showToast(this.translate.instant('ORDERS.AI_PHONE_ERROR'), 'error');
-      },
-    });
-  }
-
-  confirmRejectAiPhoneOrder(draft: AiPhoneOrderDraft): void {
-    this.openConfirmModal(this.translate.instant('ORDERS.AI_PHONE_REJECT_CONFIRM'), () => {
-      this.aiPhoneOrderBusyId.set(draft.id);
-      this.api.rejectAiPhoneOrder(draft.id).subscribe({
-        next: () => {
-          this.aiPhoneOrderBusyId.set(null);
-          this.aiPhoneOrders.set(this.aiPhoneOrders().filter(d => d.id !== draft.id));
-          this.showToast(this.translate.instant('ORDERS.AI_PHONE_REJECTED_TOAST'), 'success');
-        },
-        error: () => {
-          this.aiPhoneOrderBusyId.set(null);
-          this.showToast(this.translate.instant('ORDERS.AI_PHONE_ERROR'), 'error');
-        },
-      });
-    });
-  }
-
-  aiPhoneOrderDraftTotal(draft: AiPhoneOrderDraft): number {
-    return draft.items.reduce((sum, it) => sum + it.price_cents * it.quantity, 0);
-  }
+  // AI phone orders module moved to phones-ai.component.ts + AiPhoneNotificationService.
 
   openConfirmModal(message: string, onConfirm: () => void, options?: { confirmText?: string; requireReason?: boolean; requirePin?: boolean }) {
     this.confirmReason = '';

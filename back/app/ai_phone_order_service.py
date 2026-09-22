@@ -294,6 +294,16 @@ def process_turn(session: Session, draft: models.AiPhoneOrder, user_message: str
     session.commit()
     session.refresh(draft)
 
+    if finished:
+        # Push to whoever's connected right now (any page, any staff member) — the sidebar
+        # badge and the global toast both react to this, not just whoever has Orders open.
+        from .ws_broadcast import publish_order_update
+        publish_order_update(draft.tenant_id, {
+            "type": "ai_phone_order_pending",
+            "draft_id": draft.id,
+            "phone_label": draft.phone_label,
+        })
+
     return {
         "reply": reply_text,
         "items": draft.items or [],

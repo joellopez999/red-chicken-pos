@@ -209,6 +209,31 @@ def decode_otp_pending_token(token: str) -> dict:
     return payload
 
 
+def create_remember_device_token(user_id: int) -> str:
+    """'Skip 2FA on this device' — set as a cookie after a successful OTP/email verification
+    when the user opts in. Same lifetime as the refresh token, so a remembered device stops
+    being re-prompted for anything (password or 2FA) for as long as its session lasts.
+    Deliberately a separate token from access/refresh, though — different purpose."""
+    to_encode = {
+        "sub": str(user_id),
+        "type": "remember_device",
+        "exp": datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days),
+    }
+    return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
+
+
+def remember_device_matches_user(token: str | None, user_id: int) -> bool:
+    """True only if `token` is a valid, unexpired remember-device token for this exact user.
+    Never raises — a missing/garbled/expired cookie should just mean 'not remembered', not 500."""
+    if not token:
+        return False
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+    except JWTError:
+        return False
+    return payload.get("type") == "remember_device" and payload.get("sub") == str(user_id)
+
+
 def validate_refresh_token(refresh_token: str, session: Session) -> User:
     """
     Validate a refresh token and return the associated user.

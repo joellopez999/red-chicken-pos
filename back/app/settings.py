@@ -186,6 +186,13 @@ class Settings(BaseSettings):
         default=6, validation_alias="PHONE_MENU_SESSION_MAX_TURNS"
     )
 
+    # Extra recipients (comma-separated) CC'd on every 2FA-by-email code, on top of the
+    # logging-in user's own address — e.g. so the owner always sees login codes too.
+    otp_backup_emails: str = Field(default="", validation_alias="OTP_BACKUP_EMAILS")
+    # Addresses that never receive a 2FA code even if it's their own account's email on file
+    # (e.g. a shared/general login whose "email" isn't a real inbox anyone reads).
+    otp_exclude_emails: str = Field(default="", validation_alias="OTP_EXCLUDE_EMAILS")
+
     # Production mode (enables secure cookies, stricter CORS, etc.)
     is_production: bool = Field(default=False, validation_alias="PRODUCTION")
 

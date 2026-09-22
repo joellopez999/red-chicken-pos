@@ -39,22 +39,26 @@ import { LegalLinksComponent } from '../shared/legal-links.component';
         }
 
         @if (showOtpStep()) {
-          <p class="otp-prompt">{{ 'AUTH.OTP_ENTER_CODE' | translate }}</p>
+          <p class="otp-prompt">{{ (otpMethod() === 'email' ? 'AUTH.OTP_ENTER_CODE_EMAIL' : 'AUTH.OTP_ENTER_CODE') | translate }}</p>
           <form (ngSubmit)="onSubmitOtp()">
             <div class="form-group">
               <label for="otp-code">{{ 'AUTH.OTP_CODE' | translate }}</label>
-              <input 
-                id="otp-code" 
-                type="text" 
-                inputmode="numeric" 
-                pattern="[0-9]*" 
+              <input
+                id="otp-code"
+                type="text"
+                inputmode="numeric"
+                pattern="[0-9]*"
                 maxlength="6"
-                [(ngModel)]="otpCode" 
+                [(ngModel)]="otpCode"
                 name="otpCode"
                 [placeholder]="'AUTH.OTP_CODE_PLACEHOLDER' | translate"
                 autocomplete="one-time-code"
               >
             </div>
+            <label class="remember-device-row">
+              <input type="checkbox" [(ngModel)]="rememberDevice" name="rememberDevice" />
+              {{ 'AUTH.REMEMBER_DEVICE' | translate }}
+            </label>
             @if (error()) {
               <div class="error-banner">{{ error() }}</div>
             }
@@ -321,6 +325,18 @@ import { LegalLinksComponent } from '../shared/legal-links.component';
       font-size: 0.9375rem;
       margin-bottom: var(--space-4);
     }
+    .remember-device-row {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      font-size: 0.875rem;
+      color: var(--color-text-muted);
+      margin: var(--space-3) 0;
+      cursor: pointer;
+    }
+    .remember-device-row input {
+      width: auto;
+    }
     .btn-back {
       width: 100%;
       margin-top: var(--space-3);
@@ -383,7 +399,9 @@ export class LoginComponent implements OnInit {
   loading = signal(false);
   showOtpStep = signal(false);
   otpTempToken = signal<string | null>(null);
+  otpMethod = signal<'totp' | 'email'>('totp');
   otpCode = '';
+  rememberDevice = false;
 
   form = this.fb.group({
     username: ['', [Validators.required, Validators.email]],
@@ -474,6 +492,7 @@ export class LoginComponent implements OnInit {
         this.loading.set(false);
         if (err.status === 403 && err.error?.require_otp && err.error?.temp_token) {
           this.otpTempToken.set(err.error.temp_token);
+          this.otpMethod.set(err.error?.method === 'email' ? 'email' : 'totp');
           this.showOtpStep.set(true);
           this.error.set('');
         } else if (err.status === 429) {
@@ -490,7 +509,7 @@ export class LoginComponent implements OnInit {
     if (!token || !this.otpCode || this.otpCode.length !== 6) return;
     this.error.set('');
     this.loading.set(true);
-    this.api.loginWithOtp(token, this.otpCode).subscribe({
+    this.api.loginWithOtp(token, this.otpCode, this.rememberDevice).subscribe({
       next: () => {
         this.api.checkAuth().subscribe(user => {
           if (user?.role === 'courier') {
@@ -529,6 +548,7 @@ export class LoginComponent implements OnInit {
     this.showOtpStep.set(false);
     this.otpTempToken.set(null);
     this.otpCode = '';
+    this.rememberDevice = false;
     this.error.set('');
   }
 }

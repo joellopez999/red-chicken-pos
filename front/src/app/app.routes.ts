@@ -103,6 +103,8 @@ export const routes: Routes = [
 
   // Staff orders (list and manage orders)
   { path: 'staff/orders', canActivate: [authGuard, orderAccessGuard], loadComponent: () => import('./orders/orders.component').then(m => m.OrdersComponent) },
+  // AI phone orders (own page — self-gated inside the component, same permission as order status updates)
+  { path: 'staff/phones-ai', canActivate: [authGuard, orderAccessGuard], loadComponent: () => import('./phones-ai/phones-ai.component').then(m => m.PhonesAiComponent) },
   // Billing customers (Factura)
   { path: 'customers', canActivate: [authGuard, orderAccessGuard], loadComponent: () => import('./customers/customers.component').then(m => m.CustomersComponent) },
   // Kitchen display (cocina: main course) and Bar display (beverages only) - same component, filtered by category
