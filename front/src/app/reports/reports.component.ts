@@ -110,6 +110,8 @@ export class ReportsComponent implements OnInit {
   expenseFormAmount = '';
   expenseFormDate = signal('');
   expenseFormDescription = '';
+  expenseFormFile: File | null = null;
+  expenseFormFileName = signal('');
 
   @ViewChild('attendanceStaffDropdownRoot') attendanceStaffDropdownRoot?: ElementRef<HTMLElement>;
   fromDate = signal('');
@@ -146,7 +148,7 @@ export class ReportsComponent implements OnInit {
   paymentMethodColumns = computed(() => {
     const r = this.report();
     const methods = new Set((r?.payment_methods_daily ?? []).map((m) => m.payment_method));
-    const priority = ['cash', 'transfer', 'pedidosya'];
+    const priority = ['cash', 'transfer', 'pedidosya', 'ubereats'];
     return Array.from(methods).sort((a, b) => {
       const pa = priority.indexOf(a);
       const pb = priority.indexOf(b);
@@ -432,6 +434,8 @@ export class ReportsComponent implements OnInit {
     this.expenseFormAmount = '';
     this.expenseFormDate.set(this.fmtDate(new Date()));
     this.expenseFormDescription = '';
+    this.expenseFormFile = null;
+    this.expenseFormFileName.set('');
     this.expenseModalOpen.set(true);
     if (this.expenseCategories().length === 0) {
       this.api.getExpenseCategories().subscribe({
@@ -443,6 +447,29 @@ export class ReportsComponent implements OnInit {
 
   closeExpenseModal(): void {
     this.expenseModalOpen.set(false);
+  }
+
+  onExpenseFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    this.expenseFormFile = file;
+    this.expenseFormFileName.set(file?.name ?? '');
+  }
+
+  clearExpenseFile(): void {
+    this.expenseFormFile = null;
+    this.expenseFormFileName.set('');
+  }
+
+  viewExpenseAttachment(expense: Expense): void {
+    this.api.downloadExpenseAttachment(expense.id).subscribe({
+      next: (blob) => {
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      },
+      error: () => {},
+    });
   }
 
   submitExpense(): void {
@@ -469,11 +496,30 @@ export class ReportsComponent implements OnInit {
       description: this.expenseFormDescription.trim() || null,
       expense_date: expenseDate,
     };
+    const file = this.expenseFormFile;
     this.api.createExpense(body).subscribe({
-      next: () => {
-        this.expenseSaving.set(false);
-        this.expenseModalOpen.set(false);
-        this.loadExpenses();
+      next: (created) => {
+        if (!file) {
+          this.expenseSaving.set(false);
+          this.expenseModalOpen.set(false);
+          this.loadExpenses();
+          return;
+        }
+        this.api.uploadExpenseAttachment(created.id, file).subscribe({
+          next: () => {
+            this.expenseSaving.set(false);
+            this.expenseModalOpen.set(false);
+            this.loadExpenses();
+          },
+          error: () => {
+            // Expense itself saved fine — only the attachment failed. Don't block the flow,
+            // but do warn since it would otherwise fail silently.
+            this.expenseSaving.set(false);
+            this.expenseModalOpen.set(false);
+            this.loadExpenses();
+            alert(this.translate.instant('REPORTS.EXPENSE_ATTACHMENT_SAVE_FAILED'));
+          },
+        });
       },
       error: (err) => {
         this.expenseSaving.set(false);

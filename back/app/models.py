@@ -2681,6 +2681,8 @@ class Expense(SQLModel, table=True):
     expense_date: date = Field(index=True)
     created_by_user_id: int | None = Field(default=None, foreign_key="user.id")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    attachment_filename: str | None = Field(default=None, max_length=255)
+    attachment_content_type: str | None = Field(default=None, max_length=100)
 
 
 class ExpenseCreate(SQLModel):

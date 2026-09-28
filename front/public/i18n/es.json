@@ -1157,6 +1157,7 @@
     "revolut": "Revolut",
     "transfer": "Transferencia",
     "pedidosya": "PedidosYa",
+    "ubereats": "Uber Eats",
     "other": "Otro",
     "manual_invoice": "Factura manual",
     "unknown": "Sin especificar"
@@ -1367,6 +1368,9 @@
     "EXPENSE_AMOUNT": "Monto",
     "EXPENSE_DATE": "Fecha",
     "EXPENSE_DESCRIPTION": "Descripción (opcional)",
+    "EXPENSE_ATTACHMENT": "Foto o archivo del recibo (opcional)",
+    "EXPENSE_VIEW_ATTACHMENT": "Ver adjunto",
+    "EXPENSE_ATTACHMENT_SAVE_FAILED": "El gasto se guardó, pero no se pudo subir el adjunto. Intenta adjuntarlo de nuevo.",
     "EXPENSE_SAVE": "Guardar gasto",
     "EXPENSE_DELETE": "Eliminar gasto",
     "EXPENSE_DELETE_CONFIRM": "¿Eliminar este gasto? No se puede deshacer.",

@@ -1313,6 +1313,7 @@
     "revolut": "Revolut",
     "transfer": "Bank transfer",
     "pedidosya": "PedidosYa",
+    "ubereats": "Uber Eats",
     "other": "Other",
     "manual_invoice": "Manual invoice",
     "unknown": "Unspecified"
@@ -1523,6 +1524,9 @@
     "EXPENSE_AMOUNT": "Amount",
     "EXPENSE_DATE": "Date",
     "EXPENSE_DESCRIPTION": "Description (optional)",
+    "EXPENSE_ATTACHMENT": "Receipt photo or file (optional)",
+    "EXPENSE_VIEW_ATTACHMENT": "View attachment",
+    "EXPENSE_ATTACHMENT_SAVE_FAILED": "Expense saved, but the attachment could not be uploaded. Try attaching it again.",
     "EXPENSE_SAVE": "Save expense",
     "EXPENSE_DELETE": "Delete expense",
     "EXPENSE_DELETE_CONFIRM": "Delete this expense? This cannot be undone.",

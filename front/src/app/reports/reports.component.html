@@ -112,6 +112,7 @@
               <th>{{ 'REPORTS.EXPENSE_DESCRIPTION' | translate }}</th>
               <th>{{ 'REPORTS.EXPENSE_AMOUNT' | translate }}</th>
               <th></th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -121,6 +122,11 @@
                 <td>{{ expense.category }}</td>
                 <td>{{ expense.description || '—' }}</td>
                 <td>{{ formatCurrency(expense.amount_cents) }}</td>
+                <td>
+                  @if (expense.has_attachment) {
+                    <button type="button" class="btn-icon-attachment" (click)="viewExpenseAttachment(expense)" [attr.aria-label]="'REPORTS.EXPENSE_VIEW_ATTACHMENT' | translate" [title]="'REPORTS.EXPENSE_VIEW_ATTACHMENT' | translate">📎</button>
+                  }
+                </td>
                 <td>
                   <button type="button" class="btn-icon-delete" (click)="deleteExpenseRow(expense)" [attr.aria-label]="'REPORTS.EXPENSE_DELETE' | translate">✕</button>
                 </td>
@@ -857,6 +863,16 @@
         <div class="reports-modal-field">
           <label for="expense-description">{{ 'REPORTS.EXPENSE_DESCRIPTION' | translate }}</label>
           <textarea id="expense-description" rows="2" [(ngModel)]="expenseFormDescription"></textarea>
+        </div>
+        <div class="reports-modal-field">
+          <label for="expense-attachment">{{ 'REPORTS.EXPENSE_ATTACHMENT' | translate }}</label>
+          <input id="expense-attachment" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" (change)="onExpenseFileSelected($event)" />
+          @if (expenseFormFileName()) {
+            <p class="muted reports-modal-hint">
+              {{ expenseFormFileName() }}
+              <button type="button" class="btn-link" (click)="clearExpenseFile()">{{ 'COMMON.CANCEL' | translate }}</button>
+            </p>
+          }
         </div>
         <div class="reports-modal-actions">
           <button type="button" class="btn btn-secondary" (click)="closeExpenseModal()" [disabled]="expenseSaving()">

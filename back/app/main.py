@@ -33,6 +33,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel as _BaseModel, Field
 from sqlalchemy import event, or_
 from sqlalchemy.exc import IntegrityError, InvalidRequestError, OperationalError, StatementError
+from sqlalchemy.exc import TimeoutError as SATimeoutError
 from sqlmodel import Session, select
 
 from . import models, security
@@ -51,7 +52,7 @@ from .ai_phone_order_routes import router as ai_phone_order_router
 from .ai_phone_menu_routes import router as ai_phone_menu_router
 from .expense_routes import router as expense_router
 from .sri_routes import router as sri_router
-from . import resend_service
+from . import ops_alerts, resend_service
 from .platform_routes import router as platform_router
 from .saas_routes import router as saas_router
 from .attendance_routes import router as attendance_router
@@ -323,23 +324,12 @@ async def _app_lifespan(app: FastAPI):
         logger.info(f"Database schema version: {db_version}")
     except Exception as e:
         logger.warning(f"Migration check failed: {e}", exc_info=True)
-    from .reservation_reminder_heartbeat import reservation_reminder_heartbeat_loop
-
-    stop_heartbeat = asyncio.Event()
-    heartbeat_task = asyncio.create_task(
-        reservation_reminder_heartbeat_loop(stop=stop_heartbeat)
-    )
-    app.state.reservation_reminder_stop = stop_heartbeat
-    app.state.reservation_reminder_task = heartbeat_task
-    logger.info("Reservation reminder heartbeat started (runs every 5 minutes)")
-
-    from .social_publish_worker import social_publish_worker_loop
-
-    stop_social = asyncio.Event()
-    social_task = asyncio.create_task(social_publish_worker_loop(stop=stop_social))
-    app.state.social_publish_stop = stop_social
-    app.state.social_publish_task = social_task
-    logger.info("Social publish worker started")
+    # Reservation reminder heartbeat and the social (Facebook/Instagram) publish worker
+    # are disabled — neither feature is used by any tenant on this deployment (0 rows
+    # in `reservation`/`social_connection`/`social_post`), and each one polling the DB
+    # on its own timer was needless load on the connection pool for zero benefit.
+    # Re-enable by restoring their `asyncio.create_task(...)` calls (see git history)
+    # if reservations or social publishing ever get adopted.
 
     from .sri_authorization_worker import sri_authorization_worker_loop
 
@@ -362,30 +352,6 @@ async def _app_lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
     logger.info("SRI authorization worker stopped")
-
-    stop_soc = getattr(app.state, "social_publish_stop", None)
-    task_soc = getattr(app.state, "social_publish_task", None)
-    if stop_soc:
-        stop_soc.set()
-    if task_soc and not task_soc.done():
-        task_soc.cancel()
-        try:
-            await task_soc
-        except asyncio.CancelledError:
-            pass
-    logger.info("Social publish worker stopped")
-
-    stop = getattr(app.state, "reservation_reminder_stop", None)
-    task = getattr(app.state, "reservation_reminder_task", None)
-    if stop:
-        stop.set()
-    if task and not task.done():
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-    logger.info("Reservation reminder heartbeat stopped")
 
 
 app = FastAPI(
@@ -484,6 +450,8 @@ def _is_connection_or_pool_operational_failure(exc: BaseException) -> bool:
 @app.exception_handler(OperationalError)
 async def database_operational_error_handler(request: Request, exc: OperationalError):
     logger.error("Database operational error on %s %s: %s", request.method, request.url.path, exc)
+    kind = "Pool de conexiones agotado" if isinstance(exc, SATimeoutError) else "Error de conexión a la base de datos"
+    ops_alerts.notify_ops_error(kind, f"{request.method} {request.url.path}: {exc}"[:1000])
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         content={"detail": "Database temporarily unavailable. Try again shortly."},
@@ -499,6 +467,9 @@ async def database_statement_error_handler(request: Request, exc: StatementError
             request.url.path,
             exc,
         )
+        ops_alerts.notify_ops_error(
+            "Error de conexión a la base de datos", f"{request.method} {request.url.path}: {exc}"[:1000]
+        )
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={"detail": "Database temporarily unavailable. Try again shortly."},
@@ -509,6 +480,8 @@ async def database_statement_error_handler(request: Request, exc: StatementError
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    kind = "Pool de conexiones agotado" if isinstance(exc, SATimeoutError) else f"Error inesperado ({type(exc).__name__})"
+    ops_alerts.notify_ops_error(kind, f"{request.method} {request.url.path}: {exc}"[:1000])
     try:
         from jose import JWTError, jwt
 
@@ -648,6 +621,15 @@ def deny_public_sri_ride_uploads(tenant_id: int, filename: str):
     if "/" in filename or "\\" in filename or filename.startswith("."):
         raise HTTPException(status_code=404, detail="Invalid filename")
     raise HTTPException(status_code=403, detail="RIDE files are not available at this URL")
+
+
+@app.get("/uploads/{tenant_id}/expenses/{filename}", include_in_schema=False)
+def deny_public_expense_attachment_uploads(tenant_id: int, filename: str):
+    """Expense receipt photos/PDFs are only served via the authenticated
+    GET /expenses/{expense_id}/attachment route."""
+    if "/" in filename or "\\" in filename or filename.startswith("."):
+        raise HTTPException(status_code=404, detail="Invalid filename")
+    raise HTTPException(status_code=403, detail="Expense attachments are not available at this URL")
 
 
 # Mount static files for serving images (fallback for any other uploads paths)
@@ -14532,7 +14514,7 @@ def mark_order_paid(
     already = order_pay_svc.amount_paid_cents(session, order.id)
     remaining = max(0, due - already)
     method = (payment_data.payment_method or "cash").strip() or "cash"
-    if method in ("transfer", "pedidosya") and payment_data.payment_reference:
+    if method in ("transfer", "pedidosya", "ubereats") and payment_data.payment_reference:
         order.payment_reference = payment_data.payment_reference.strip()[:100] or None
         session.add(order)
 
@@ -14780,7 +14762,7 @@ def finish_order(
     session.flush()
 
     method = (payment_data.payment_method or "cash").strip() or "cash"
-    if method in ("transfer", "pedidosya") and payment_data.payment_reference:
+    if method in ("transfer", "pedidosya", "ubereats") and payment_data.payment_reference:
         order.payment_reference = payment_data.payment_reference.strip()[:100] or None
         session.add(order)
     due = order_pay_svc.order_due_cents(session, order, include_tip=True)

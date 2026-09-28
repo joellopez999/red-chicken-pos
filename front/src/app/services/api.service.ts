@@ -1468,6 +1468,7 @@ export interface Expense {
   expense_date: string;
   created_by_user_id: number | null;
   created_at: string | null;
+  has_attachment: boolean;
 }
 
 export interface ExpenseCreate {
@@ -3283,6 +3284,20 @@ export class ApiService {
 
   deleteExpense(expenseId: number): Observable<{ status: string; id: number }> {
     return this.http.delete<{ status: string; id: number }>(`${this.apiUrl}/expenses/${expenseId}`);
+  }
+
+  uploadExpenseAttachment(expenseId: number, file: File): Observable<Expense> {
+    const fd = new FormData();
+    fd.append('file', file, file.name);
+    return this.http.post<Expense>(`${this.apiUrl}/expenses/${expenseId}/attachment`, fd);
+  }
+
+  downloadExpenseAttachment(expenseId: number): Observable<Blob> {
+    return this.http.get(`${this.apiUrl}/expenses/${expenseId}/attachment`, { responseType: 'blob' });
+  }
+
+  deleteExpenseAttachment(expenseId: number): Observable<Expense> {
+    return this.http.delete<Expense>(`${this.apiUrl}/expenses/${expenseId}/attachment`);
   }
 
   listAiPhoneOrders(status?: string): Observable<AiPhoneOrderDraft[]> {

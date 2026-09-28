@@ -1356,6 +1356,7 @@ ModuleRegistry.registerModules([
                     <option value="terminal">{{ 'ORDERS.CARD_TERMINAL' | translate }}</option>
                     <option value="transfer">{{ 'PAYMENT_METHOD.transfer' | translate }}</option>
                     <option value="pedidosya">{{ 'PAYMENT_METHOD.pedidosya' | translate }}</option>
+                    <option value="ubereats">{{ 'PAYMENT_METHOD.ubereats' | translate }}</option>
                     <option value="stripe">{{ 'ORDERS.STRIPE_ONLINE' | translate }}</option>
                     <option value="other">{{ 'ORDERS.OTHER' | translate }}</option>
                   </select>
@@ -2879,7 +2880,7 @@ export class OrdersComponent implements OnInit, OnDestroy {
   /** Payment methods settled outside the POS (bank transfer, delivery platform) where staff
    * type in the platform/bank's own confirmation number to reconcile later. */
   paymentMethodHasReference(): boolean {
-    return this.paymentMethod === 'transfer' || this.paymentMethod === 'pedidosya';
+    return this.paymentMethod === 'transfer' || this.paymentMethod === 'pedidosya' || this.paymentMethod === 'ubereats';
   }
   /** Selected POS tip preset percent; 0 = no tip */
   paymentTipPercent = 0;
