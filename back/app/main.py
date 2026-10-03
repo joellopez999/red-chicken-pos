@@ -472,7 +472,7 @@ def _is_connection_or_pool_operational_failure(exc: BaseException) -> bool:
 async def database_operational_error_handler(request: Request, exc: OperationalError):
     logger.error("Database operational error on %s %s: %s", request.method, request.url.path, exc)
     kind = "Pool de conexiones agotado" if isinstance(exc, SATimeoutError) else "Error de conexión a la base de datos"
-    ops_alerts.notify_ops_error(kind, f"{request.method} {request.url.path}: {exc}"[:1000])
+    asyncio.create_task(asyncio.to_thread(ops_alerts.notify_ops_error, kind, f"{request.method} {request.url.path}: {exc}"[:1000]))
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         content={"detail": "Database temporarily unavailable. Try again shortly."},
@@ -488,9 +488,11 @@ async def database_statement_error_handler(request: Request, exc: StatementError
             request.url.path,
             exc,
         )
-        ops_alerts.notify_ops_error(
-            "Error de conexión a la base de datos", f"{request.method} {request.url.path}: {exc}"[:1000]
-        )
+        asyncio.create_task(asyncio.to_thread(
+            ops_alerts.notify_ops_error,
+            "Error de conexión a la base de datos",
+            f"{request.method} {request.url.path}: {exc}"[:1000],
+        ))
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={"detail": "Database temporarily unavailable. Try again shortly."},
@@ -502,7 +504,7 @@ async def database_statement_error_handler(request: Request, exc: StatementError
 async def unhandled_exception_handler(request: Request, exc: Exception):
     logger.exception("Unhandled error on %s %s", request.method, request.url.path)
     kind = "Pool de conexiones agotado" if isinstance(exc, SATimeoutError) else f"Error inesperado ({type(exc).__name__})"
-    ops_alerts.notify_ops_error(kind, f"{request.method} {request.url.path}: {exc}"[:1000])
+    asyncio.create_task(asyncio.to_thread(ops_alerts.notify_ops_error, kind, f"{request.method} {request.url.path}: {exc}"[:1000]))
     try:
         from jose import JWTError, jwt
 
@@ -14216,6 +14218,8 @@ def list_orders(
     ).all()
     station_by_id = {s.id: s for s in station_rows if s.id is not None}
 
+    from app.delivery_order_service import order_delivery_fee_cents
+
     hub_by_order = hub_ff.fulfillments_by_order_ids(
         session, [o.id for o in orders if o.id is not None]
     )
@@ -14229,36 +14233,108 @@ def list_orders(
         and group_for_user.hub_tenant_id != current_user.tenant_id
     )
 
+    # Bulk pre-fetch everything the per-order loop below needs, instead of several
+    # separate queries per order (table, items x3, products, billing customer,
+    # payments, payment-item allocations) — with hundreds of orders this turned
+    # GET /orders into a multi-second request and a major contributor to pool
+    # exhaustion under real concurrent load. Same data, same output, just fetched
+    # in bulk (same pattern as hub_by_order / sri_comprobante_by_order above).
+    order_ids = [o.id for o in orders if o.id is not None]
+
+    all_order_items = (
+        session.exec(
+            select(models.OrderItem)
+            .where(models.OrderItem.order_id.in_(order_ids))
+            .order_by(models.OrderItem.id.asc())
+        ).all()
+        if order_ids
+        else []
+    )
+    items_by_order: dict[int, list[models.OrderItem]] = {}
+    for oi in all_order_items:
+        items_by_order.setdefault(oi.order_id, []).append(oi)
+
+    table_ids = {o.table_id for o in orders if o.table_id is not None}
+    table_by_id = {}
+    if table_ids:
+        table_rows = session.exec(select(models.Table).where(models.Table.id.in_(table_ids))).all()
+        table_by_id = {t.id: t for t in table_rows}
+
+    all_product_ids = {oi.product_id for oi in all_order_items if oi.product_id is not None}
+    product_by_id = {}
+    if all_product_ids:
+        prod_rows = session.exec(select(models.Product).where(models.Product.id.in_(all_product_ids))).all()
+        product_by_id = {p.id: p for p in prod_rows}
+
+    bc_ids = {o.billing_customer_id for o in orders if o.billing_customer_id is not None}
+    billing_customer_by_id = {}
+    if bc_ids:
+        bc_rows = session.exec(
+            select(models.BillingCustomer).where(
+                models.BillingCustomer.id.in_(bc_ids),
+                models.BillingCustomer.tenant_id == current_user.tenant_id,
+            )
+        ).all()
+        billing_customer_by_id = {b.id: b for b in bc_rows}
+
+    group_ids = {t.table_group_id for t in table_by_id.values() if t.table_group_id is not None}
+    group_members_by_group_id: dict[int, list[models.Table]] = {
+        gid: _tables_in_group(session, current_user.tenant_id, gid) for gid in group_ids
+    }
+
+    payment_rows = (
+        session.exec(
+            select(models.OrderPayment)
+            .where(
+                models.OrderPayment.order_id.in_(order_ids),
+                models.OrderPayment.voided_at.is_(None),
+            )
+            .order_by(models.OrderPayment.paid_at.asc(), models.OrderPayment.id.asc())
+        ).all()
+        if order_ids
+        else []
+    )
+    payments_by_order: dict[int, list[models.OrderPayment]] = {}
+    payment_ids_all: list[int] = []
+    for p in payment_rows:
+        payments_by_order.setdefault(p.order_id, []).append(p)
+        if p.id is not None:
+            payment_ids_all.append(p.id)
+
+    payment_item_rows = (
+        session.exec(
+            select(models.OrderPaymentItem).where(
+                models.OrderPaymentItem.order_payment_id.in_(payment_ids_all)
+            )
+        ).all()
+        if payment_ids_all
+        else []
+    )
+    payment_items_by_payment_id: dict[int, list[models.OrderPaymentItem]] = {}
+    for pi in payment_item_rows:
+        payment_items_by_payment_id.setdefault(pi.order_payment_id, []).append(pi)
+
     result = []
     for order in orders:
-        table = session.exec(select(models.Table).where(models.Table.id == order.table_id)).first()
-        
-        # Get items, optionally including removed ones
+        table = table_by_id.get(order.table_id) if order.table_id is not None else None
+
+        order_all_items = items_by_order.get(order.id, []) if order.id is not None else []
+
+        # Get items, optionally including removed ones (same ordering as before:
+        # non-removed first then removed, each by id, when include_removed)
         if include_removed:
-            items = session.exec(
-                select(models.OrderItem)
-                .where(models.OrderItem.order_id == order.id)
-                .order_by(models.OrderItem.removed_by_customer.asc(), models.OrderItem.id.asc())
-            ).all()
+            items = sorted(order_all_items, key=lambda i: (i.removed_by_customer, i.id))
         else:
-            items = session.exec(
-                select(models.OrderItem)
-                .where(
-                    models.OrderItem.order_id == order.id,
-                    models.OrderItem.removed_by_customer == False
-                )
-            ).all()
-        
+            items = [i for i in order_all_items if not i.removed_by_customer]
+
         # Compute order status from items (if not paid or cancelled)
         computed_status = order.status
         if order.status not in [models.OrderStatus.paid, models.OrderStatus.cancelled]:
-            computed_status = compute_order_status_from_items(
-                session.exec(select(models.OrderItem).where(models.OrderItem.order_id == order.id)).all()
-            )
-        
+            computed_status = compute_order_status_from_items(order_all_items)
+
         # Get all items for removed count calculation
-        all_items = session.exec(select(models.OrderItem).where(models.OrderItem.order_id == order.id)).all()
-        
+        all_items = order_all_items
+
         # Calculate total from active items only (exclude items removed by customer OR staff, and cancelled)
         active_items = [
             item for item in all_items
@@ -14273,20 +14349,14 @@ def list_orders(
         loyalty_discount = order_level_discount_cents(order)
         total_cents = max(0, subtotal_cents + tax_cents - loyalty_discount) + tip_amt
 
-        # Product categories for kitchen/bar display filtering (one query per order)
-        product_ids = list({i.product_id for i in items})
-        product_map = {}
-        if product_ids:
-            products = session.exec(
-                select(models.Product).where(models.Product.id.in_(product_ids))
-            ).all()
-            product_map = {p.id: p for p in products}
+        # Product categories for kitchen/bar display filtering (bulk-fetched above)
+        product_map = {i.product_id: product_by_id.get(i.product_id) for i in items}
 
         # Billing customer for Factura (if set)
         billing_customer = None
         if order.billing_customer_id:
-            bc = session.get(models.BillingCustomer, order.billing_customer_id)
-            if bc and bc.tenant_id == current_user.tenant_id:
+            bc = billing_customer_by_id.get(order.billing_customer_id)
+            if bc:
                 billing_customer = {
                     "id": bc.id,
                     "name": bc.name,
@@ -14331,8 +14401,10 @@ def list_orders(
             )
 
         tg_label = None
-        if table:
-            tg_label = _table_group_display_label(session, current_user.tenant_id, table)
+        if table and table.table_group_id:
+            group_members = group_members_by_group_id.get(table.table_group_id, [])
+            names = sorted((m.name or "") for m in group_members)
+            tg_label = " + ".join(names) if names else None
 
         channel = _order_channel_value(order)
         table_display = "Unknown"
@@ -14380,11 +14452,40 @@ def list_orders(
             "removed_items_count": len([item for item in all_items if item.removed_by_customer]),
             "can_request_hub_fulfillment": can_request_hub and order.id not in hub_by_order,
         }
-        recon = order_pay_svc.reconciliation_dict(session, order)
-        row_out["amount_due_cents"] = recon["amount_due_cents"]
-        row_out["amount_paid_cents"] = recon["amount_paid_cents"]
-        row_out["amount_remaining_cents"] = recon["amount_remaining_cents"]
-        row_out["payments"] = recon["payments"]
+        # Reconciliation (amount due/paid/remaining + payment legs), computed from the
+        # bulk-fetched payments/allocations above instead of order_pay_svc.reconciliation_dict
+        # (which re-queries per order) — mirrors order_due_cents/amount_paid_cents/
+        # payment_to_dict exactly, including the satisfecho_delivery fee addition.
+        order_payments = payments_by_order.get(order.id, []) if order.id is not None else []
+        amount_paid = sum(int(p.amount_cents or 0) for p in order_payments)
+        due_subtotal = subtotal_cents + tax_cents
+        if channel == models.OrderChannel.satisfecho_delivery.value:
+            due_subtotal += order_delivery_fee_cents(order)
+        amount_due = max(0, due_subtotal - loyalty_discount) + tip_amt
+        amount_remaining = max(0, amount_due - amount_paid)
+        payments_json = [
+            {
+                "id": p.id,
+                "order_id": p.order_id,
+                "amount_cents": p.amount_cents,
+                "payment_method": p.payment_method,
+                "payer_label": p.payer_label,
+                "tip_amount_cents": p.tip_amount_cents,
+                "stripe_payment_intent_id": p.stripe_payment_intent_id,
+                "paid_by_user_id": p.paid_by_user_id,
+                "paid_at": p.paid_at.isoformat() if p.paid_at else None,
+                "voided_at": p.voided_at.isoformat() if p.voided_at else None,
+                "note": p.note,
+                "order_item_ids": [
+                    pi.order_item_id for pi in payment_items_by_payment_id.get(p.id, [])
+                ] if p.id is not None else [],
+            }
+            for p in order_payments
+        ]
+        row_out["amount_due_cents"] = amount_due
+        row_out["amount_paid_cents"] = amount_paid
+        row_out["amount_remaining_cents"] = amount_remaining
+        row_out["payments"] = payments_json
         if tg_label:
             row_out["table_group_label"] = tg_label
         ff = hub_by_order.get(order.id) if order.id is not None else None
