@@ -310,9 +310,30 @@ if settings.root_path:
     _swagger_ui_params["url"] = f"{settings.root_path.rstrip('/')}/openapi.json"
 
 
+async def _wait_for_db_ready(max_wait_seconds: int = 90) -> None:
+    """`depends_on: condition: service_healthy` only orders startup for an explicit
+    `docker compose up` — when containers restart on their own via `restart:
+    unless-stopped` after a host reboot/power outage, Docker ignores that ordering
+    entirely. Postgres can still be mid crash-recovery (WAL replay/fsync, can take
+    minutes) when `back` starts, so retry here instead of letting that race take
+    down the whole app startup (previously required a manual restart)."""
+    deadline = _time.monotonic() + max_wait_seconds
+    last_exc: Exception | None = None
+    while _time.monotonic() < deadline:
+        try:
+            check_db_connection()
+            return
+        except Exception as exc:
+            last_exc = exc
+            logger.warning("Database not ready yet, retrying in 2s: %s", exc)
+            await asyncio.sleep(2)
+    raise RuntimeError(f"Database did not become ready within {max_wait_seconds}s") from last_exc
+
+
 @asynccontextmanager
 async def _app_lifespan(app: FastAPI):
     logger.info("Starting application...")
+    await _wait_for_db_ready()
     create_db_and_tables()
     try:
         from .migrate import MigrationRunner
@@ -798,7 +819,11 @@ def get_redis() -> redis.Redis | None:
     if redis_client is None:
         redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
         try:
-            redis_client = redis.from_url(redis_url)
+            # Without a socket timeout, a slow/degraded Redis (not fully down — that
+            # fails fast) can hang these calls indefinitely. Since every caller here
+            # runs synchronously inside a request with its DB session still open,
+            # an unbounded hang holds that connection "idle in transaction" forever.
+            redis_client = redis.from_url(redis_url, socket_timeout=3, socket_connect_timeout=3)
             redis_client.ping()
         except Exception:
             redis_client = None

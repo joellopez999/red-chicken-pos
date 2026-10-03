@@ -11,6 +11,12 @@ engine = create_engine(
     pool_size=10,
     max_overflow=20,
     pool_recycle=1800,
+    # Safety net: if application code ever hangs after a commit while still holding
+    # the session open (a slow/blocking external call with no timeout, a missed
+    # session close, etc.), Postgres itself kills the connection instead of it
+    # sitting "idle in transaction" forever and slowly starving the pool — this is
+    # exactly how two real outages happened (pool exhausted by stuck connections).
+    connect_args={"options": "-c idle_in_transaction_session_timeout=60000"},
 )
 
 
