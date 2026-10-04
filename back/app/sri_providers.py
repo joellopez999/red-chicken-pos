@@ -11,6 +11,15 @@ from typing import Any
 
 from zeep import Client
 from zeep.helpers import serialize_object
+from zeep.transports import Transport
+
+# SRI's government web services have no documented SLA and can hang instead of
+# erroring when slow/unresponsive — without a client-side timeout, `zeep`'s
+# underlying `requests` call blocks indefinitely, which previously surfaced as a
+# ~50s HAProxy/Cloudflare gateway timeout on "Emitir factura" with no error ever
+# logged (the call never raised, it just never returned). `operation_timeout`
+# bounds the actual SOAP call; the plain `timeout` bounds fetching the WSDL.
+_SRI_TRANSPORT = Transport(timeout=15, operation_timeout=20)
 
 AMBIENTE_PRUEBAS = 1
 AMBIENTE_PRODUCCION = 2
@@ -55,7 +64,7 @@ def enviar_recepcion(xml_firmado_bytes: bytes, ambiente: int) -> RecepcionResult
     RespuestaRecepcionComprobante), so `response`/`data` is already the respuestaSolicitud
     object (confirmed live against the pruebas endpoint, not just the WSDL on paper).
     """
-    client = Client(wsdl=RECEPCION_WSDL[ambiente])
+    client = Client(wsdl=RECEPCION_WSDL[ambiente], transport=_SRI_TRANSPORT)
     response = client.service.validarComprobante(xml=xml_firmado_bytes)
     data = serialize_object(response, dict) or {}
     estado = str(data.get("estado") or "")
@@ -67,7 +76,7 @@ def enviar_recepcion(xml_firmado_bytes: bytes, ambiente: int) -> RecepcionResult
 
 def consultar_autorizacion(clave_acceso: str, ambiente: int) -> AutorizacionResult:
     """zeep auto-unwraps the response wrapper the same way as enviar_recepcion above."""
-    client = Client(wsdl=AUTORIZACION_WSDL[ambiente])
+    client = Client(wsdl=AUTORIZACION_WSDL[ambiente], transport=_SRI_TRANSPORT)
     response = client.service.autorizacionComprobante(claveAccesoComprobante=clave_acceso)
     data = serialize_object(response, dict) or {}
     autorizaciones = _as_list((data.get("autorizaciones") or {}).get("autorizacion"))
